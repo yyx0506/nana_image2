@@ -2,9 +2,9 @@
 
 ![GPT Image 2.5：Sunburst 精细编辑、Flare 快速生图，支持 auth.json 回退和 uv 启动](assets/sub2api-imagegen-hero-2.5-workshops.png)
 
-> **本仓库是 fork**：原项目 [huysh3/sub2api-gpt-image-2](https://github.com/huysh3/sub2api-gpt-image-2)（MIT）。
-> 本 fork 增加了：PSD 图层处理（`psd-layers` / `psd-export` / `psd-compose`，纯标准库）、
-> Python 3.9+ 兼容（不再强制 3.11/tomllib）、以及给非技术同事用的双平台一键安装/卸载脚本。
+> 来源仓库：https://github.com/yyx0506/sub2api-gpt-image-2
+> 内置：PSD 图层处理（`psd-layers` / `psd-export` / `psd-compose`，纯标准库）、
+> Python 3.9+ 兼容、4K 流式与降级判定、以及给非技术同事用的双平台一键安装/卸载脚本。
 
 一个给 Codex 使用的图片生成 Skill：当内置 `$imagegen` 不可用、缺失或被自定义 provider / sub2api 拦截时，改用当前 Codex provider 直接调用兼容的 Images API。
 
@@ -13,16 +13,16 @@
 - 自动读取当前 Codex provider 的 `base_url`、`experimental_bearer_token` 和自定义请求头。
 - 使用非 OpenAI SDK 的 User-Agent，绕开已知的 sub2api / Cloudflare SDK 请求头拦截。
 - 支持图片生成、图片编辑、无费用连通性检查和脱敏 dry run。
-- **PSD 图层工作流（本 fork 新增）**：列出图层、导出指定图层为 PNG 喂给生成/编辑、把多张生成图合成为新的分层 PSD（Photoshop / Photopea / Krita / Affinity 均可打开）。
-- **4K 双保险（本 fork 新增）**：慢任务（high/xhigh/max 质量或 ≥2MP 显式尺寸）的 `generate` 自动改用流式，规避 Cloudflare 524 超时；`edit` 永不流式（规避 sub2api [#8027](https://github.com/Wei-Shaw/sub2api/issues/8027) 的 502+号池耗尽）。
-- **降级明确判定（本 fork 新增）**：显式请求尺寸时校验实际输出，发现被上游静默降级（[#6120](https://github.com/Wei-Shaw/sub2api/issues/6120)/[#3302](https://github.com/Wei-Shaw/sub2api/issues/3302)/[#7119](https://github.com/Wei-Shaw/sub2api/issues/7119)）时输出 `degraded: true` 的 JSON 判定与建议，不再只给一句 warning。
+- **PSD 图层工作流**：列出图层、导出指定图层为 PNG 喂给生成/编辑、把多张生成图合成为新的分层 PSD（Photoshop / Photopea / Krita / Affinity 均可打开）。
+- **4K 双保险**：慢任务（high/xhigh/max 质量或 ≥2MP 显式尺寸）的 `generate` 自动改用流式，规避 Cloudflare 524 超时；`edit` 永不流式（规避 sub2api [#8027](https://github.com/Wei-Shaw/sub2api/issues/8027) 的 502+号池耗尽）。
+- **降级明确判定**：显式请求尺寸时校验实际输出，发现被上游静默降级（[#6120](https://github.com/Wei-Shaw/sub2api/issues/6120)/[#3302](https://github.com/Wei-Shaw/sub2api/issues/3302)/[#7119](https://github.com/Wei-Shaw/sub2api/issues/7119)）时输出 `degraded: true` 的 JSON 判定与建议，不再只给一句 warning。
 - 仅依赖 Python 标准库，不安装 OpenAI SDK。
 - 默认使用 `gpt-image-2.5-sunburst`，尺寸为 `auto`；服务端返回多大就原样保存多大，不在本地超分、缩放、补边或重采样。
 
 ## 环境要求
 
 - Codex
-- Python 3.9+（本 fork 已兼容 3.9/3.10；配置解析自动回退，复杂 TOML 会明确报错），或 uv
+- Python 3.9+（3.9/3.10 配置解析自动回退，复杂 TOML 会明确报错），或 uv
 - 已配置且支持 Images API 的 Codex custom provider / sub2api
 
 ## 安装
@@ -102,7 +102,7 @@ uv run ~/.codex/skills/sub2api-imagegen/scripts/sub2api_image_gen.py generate --
 
 来源：[官方生图指南](https://developers.openai.com/api/docs/guides/image-generation)、[Sunburst](https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst)、[Flare](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare)（2026-09-27 核对）。当前 Hero 仅通过文字提示词生成，未传入参考图；请求使用 `model=gpt-image-2.5-sunburst`、`quality=high`，服务端返回 1672×941，原样保存。
 
-## PSD 图层工作流（本 fork 新增）
+## PSD 图层工作流
 
 三个**离线**子命令（不碰 provider、不需要凭证），把分层 PSD 和 AI 生图串起来：
 
@@ -166,7 +166,7 @@ python3 scripts/sub2api_image_gen.py psd-compose \
 
 ## License
 
-本项目采用 [MIT License](LICENSE)。原项目：[huysh3/sub2api-gpt-image-2](https://github.com/huysh3/sub2api-gpt-image-2)。
+本项目采用 [MIT License](LICENSE)。来源仓库：[yyx0506/sub2api-gpt-image-2](https://github.com/yyx0506/sub2api-gpt-image-2)。
 
 ## 本地验证
 
