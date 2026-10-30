@@ -9,8 +9,20 @@ setlocal
 set "DEST=%USERPROFILE%\.codex\skills\nana_image2"
 
 if exist "%DEST%" (
-    rmdir /s /q "%DEST%"
-    echo   [ok] removed %DEST%
+    if exist "%DEST%\.installed-manifest" (
+        rem remove every skill this package installed ^(incl. frozen vendors^)
+        for /f "usebackq eol=# delims=" %%L in ("%DEST%\.installed-manifest") do (
+            for %%N in (%%L) do (
+                if exist "%USERPROFILE%\.codex\skills\%%N" (
+                    rmdir /s /q "%USERPROFILE%\.codex\skills\%%N"
+                    echo   [ok] removed skill: %%N
+                )
+            )
+        )
+    ) else (
+        rmdir /s /q "%DEST%"
+        echo   [ok] removed %DEST%
+    )
 ) else (
     echo   %DEST% was not installed ^(nothing to do^).
 )

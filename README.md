@@ -15,6 +15,7 @@
 - 支持图片生成、图片编辑、无费用连通性检查和脱敏 dry run。
 - **PSD 图层工作流（毫秒级）**：列出图层、导出指定图层为 PNG 喂给生成/编辑、把多张生成图合成为新的分层 PSD（Photoshop / Photopea / Krita / Affinity 均可打开）。
 - **4K 双保险**：慢任务（high/xhigh/max 质量或 ≥2MP 显式尺寸）的 `generate` 自动改用流式，规避 Cloudflare 524 超时；`edit` 永不流式（规避 sub2api [#8027](https://github.com/Wei-Shaw/sub2api/issues/8027) 的 502+号池耗尽）。
+- **内网升级检查**：`version` / `upgrade` 子命令读取管理员维护的**内网清单**（JSON，URL 或共享路径，绝不访问 GitHub），提示新版下载地址；第三方技能以冻结版本进包（`make_dist --vendor`，自动记录 git commit），升级节奏完全由管理员掌控（见 `docs/internal-distribution.md`）。
 - **模型自选 + 响亮回退**：`--model` 可填任意模型；供应商没有该模型（不在列表或返回 model_not_found）时自动改用默认姊妹型号重试一次，并输出 `fallback` JSON 说明——绝不静默换型；`--no-fallback` 可恢复严格模式。
 - **降级明确判定**：显式请求尺寸时校验实际输出，发现被上游静默降级（[#6120](https://github.com/Wei-Shaw/sub2api/issues/6120)/[#3302](https://github.com/Wei-Shaw/sub2api/issues/3302)/[#7119](https://github.com/Wei-Shaw/sub2api/issues/7119)）时输出 `degraded: true` 的 JSON 判定与建议，不再只给一句 warning。
 - 仅依赖 Python 标准库，不安装 OpenAI SDK。

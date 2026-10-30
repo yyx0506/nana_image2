@@ -1,0 +1,10 @@
+{
+  "version": "1.3.0",
+  "url": "http://192.168.100.236/share/nana_image2/nana_image2-macos-apple-silicon-1.3.0.zip",
+  "notes": "v1.3.0：模型自选回退、性能提速、内网升级检查。Windows 同学请下载 nana_image2-windows-x64-1.3.0.zip。",
+  "per_platform": {
+    "windows-x64": "http://192.168.100.236/share/nana_image2/nana_image2-windows-x64-1.3.0.zip",
+    "macos-apple-silicon": "http://192.168.100.236/share/nana_image2/nana_image2-macos-apple-silicon-1.3.0.zip",
+    "macos-intel": "http://192.168.100.236/share/nana_image2/nana_image2-macos-intel-1.3.0.zip"
+  }
+}

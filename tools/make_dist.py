@@ -82,7 +82,38 @@ def extract_runtime(archive: Path, target: Path) -> None:
     extracted.rename(target)
 
 
-def build(layout: dict, runtimes: dict, output_dir: Path) -> Path:
+def _git_pin(directory: Path) -> tuple[str, str]:
+    """Best-effort (repo-url, commit) of a vendored checkout; (unknown, '') otherwise."""
+    import subprocess
+    if not (directory / ".git").exists():
+        return "unknown-source", ""
+    try:
+        url = subprocess.run(["git", "-C", str(directory), "remote", "get-url", "origin"],
+                             capture_output=True, text=True, timeout=15, check=False
+                             ).stdout.strip() or "unknown-source"
+        ref = subprocess.run(["git", "-C", str(directory), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, timeout=15, check=False
+                             ).stdout.strip()
+        return url, ref
+    except (OSError, subprocess.SubprocessError):
+        return "unknown-source", ""
+
+
+def collect_vendors(specs: list[str]) -> list:
+    vendors = []
+    for spec in specs or []:
+        name, sep, directory = spec.partition("=")
+        if not sep or not name.strip() or not directory.strip():
+            fail(f"--vendor must be NAME=PATH, got: {spec!r}")
+        path = Path(directory.strip()).expanduser()
+        if not (path / "SKILL.md").is_file():
+            fail(f"{path} is not a skill directory (SKILL.md missing); cannot vendor as {name}.")
+        repo, ref = _git_pin(path)
+        vendors.append((name.strip(), path, repo, ref))
+    return vendors
+
+
+def build(layout: dict, runtimes: dict, output_dir: Path, vendors: list | None = None) -> Path:
     for target, archive in runtimes.items():
         if not archive or not archive.is_file():
             fail(f"runtime archive not found for {target}: {archive}")
@@ -117,6 +148,18 @@ def build(layout: dict, runtimes: dict, output_dir: Path) -> Path:
             for target, archive in runtimes.items():
                 print(f"  bundling {target}/ from {archive.name} ...")
                 extract_runtime(archive, pkg / target)
+        if vendors:
+            lines = ["# Frozen third-party skills bundled into this package.",
+                     "# Upgrade = admin pulls a newer pin, re-runs make_dist, republishes.",
+                     ""]
+            for name, directory, repo, ref in vendors:
+                target = pkg / "vendor" / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(directory, target,
+                                ignore=shutil.ignore_patterns(".git", "__pycache__"))
+                print(f"  vendoring {name} ({repo}@{ref[:12] if ref else 'n/a'})")
+                lines.append(f"{name}: {repo}@{ref} (frozen {__import__('time').strftime('%Y-%m-%d')})")
+            (pkg / "VENDOR-VERSIONS.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
         output_dir.mkdir(parents=True, exist_ok=True)
         out = output_dir / layout["name"]
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
@@ -133,6 +176,9 @@ def main() -> None:
     ap.add_argument("--win-runtime", type=Path, help="python-build-standalone windows install_only(.zip/.tar.gz)")
     ap.add_argument("--mac-runtime", type=Path, help="python-build-standalone macOS arm64 install_only.tar.gz (bundled as runtime/)")
     ap.add_argument("--mac-runtime-x64", type=Path, help="python-build-standalone macOS x86_64 install_only.tar.gz (bundled as runtime-x64/ for Intel Macs)")
+    ap.add_argument("--vendor", action="append", metavar="NAME=PATH", default=[],
+                    help="Freeze a third-party skill directory into the package under vendor/NAME "
+                         "(its git remote+commit are recorded in VENDOR-VERSIONS.txt).")
     ap.add_argument("--output", type=Path, default=ROOT / "dist")
     ap.add_argument("--print-urls", action="store_true",
                     help="show the python-build-standalone asset naming to download and exit")
@@ -145,14 +191,15 @@ def main() -> None:
         print("  macOS x64   : cpython-3.11.<build>-x86_64-apple-darwin-install_only.tar.gz")
         return
 
+    vendors = collect_vendors(args.vendor)
     outputs = []
     if args.win_runtime:
-        outputs.append(build(WIN_LAYOUT, {"runtime": args.win_runtime}, args.output))
+        outputs.append(build(WIN_LAYOUT, {"runtime": args.win_runtime}, args.output, vendors))
     if args.mac_runtime:
         mac = {"runtime": args.mac_runtime}
         if args.mac_runtime_x64:
             mac["runtime-x64"] = args.mac_runtime_x64
-        outputs.append(build(MAC_LAYOUT, mac, args.output))
+        outputs.append(build(MAC_LAYOUT, mac, args.output, vendors))
     if not outputs:
         ap.error("nothing to build: pass --win-runtime and/or --mac-runtime")
     for out in outputs:

@@ -36,6 +36,8 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 import psd_io
 
+VERSION = "1.3.0"
+MANIFEST_ENV = "NANA_IMAGE2_MANIFEST"
 USER_AGENT = "codex-nana_image2/1.0"
 DEFAULT_MODEL = "gpt-image-2.5-sunburst"
 IMAGE_25_MODELS = {"gpt-image-2.5-sunburst", "gpt-image-2.5-flare",
@@ -585,6 +587,59 @@ def edit(args: argparse.Namespace) -> None:
 
 
 # --------------------------------------------------------------------------
+# Version + upgrade: the update channel is an INTRANET manifest the admin
+# maintains - a JSON file served anywhere reachable (or a shared path).
+# GitHub is never contacted from a colleague's machine.
+# --------------------------------------------------------------------------
+def _version_tuple(value: str) -> tuple:
+    parts = []
+    for piece in str(value).strip().split("."):
+        try:
+            parts.append(int(piece))
+        except ValueError:
+            break
+    return tuple(parts or [0])
+
+
+def _load_manifest(source: str) -> dict[str, Any]:
+    source = os.path.expanduser(source)
+    if source.startswith(("http://", "https://")):
+        request = urllib.request.Request(source, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return json.loads(response.read())
+    path = Path(source)
+    if not path.is_file():
+        fail(f"Upgrade manifest not found: {source}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def show_version(_args: argparse.Namespace) -> None:
+    print(json.dumps({"ok": True, "name": "nana_image2", "version": VERSION,
+                      "python": sys.version.split()[0]}, ensure_ascii=False))
+
+
+def check_upgrade(args: argparse.Namespace) -> None:
+    source = args.manifest or os.environ.get(MANIFEST_ENV, "")
+    if not source:
+        fail(f"No upgrade manifest configured. Pass --manifest URL/PATH or set ${MANIFEST_ENV} "
+             "(the admin publishes it on the intranet).")
+    manifest = _load_manifest(source)
+    latest = str(manifest.get("version", ""))
+    available = _version_tuple(latest) > _version_tuple(VERSION)
+    print(json.dumps({
+        "ok": True,
+        "upgrade_available": available,
+        "current": VERSION,
+        "latest": latest or None,
+        "url": manifest.get("url"),
+        "notes": manifest.get("notes"),
+        "manifest": source,
+    }, ensure_ascii=False, indent=2))
+    if not available:
+        print(f"You are up to date ({VERSION}).")
+
+
+# --------------------------------------------------------------------------
 # Offline PSD helpers: bridge layered Photoshop files with generate/edit.
 # These never touch the provider or credentials.
 # --------------------------------------------------------------------------
@@ -718,6 +773,14 @@ def parser() -> argparse.ArgumentParser:
                      help="auto: stream only slow jobs (quality high+ or >=2MP); on/off force it. Generations only.")
     gen.add_argument("--save-partials", action="store_true",
                      help="Also save intermediate partial images from the stream.")
+
+    version_cmd = commands.add_parser("version", help="Print the installed version (offline).")
+    version_cmd.set_defaults(run=show_version)
+
+    upgrade = commands.add_parser("upgrade", help="Check the INTRANET manifest for a newer package (never GitHub).")
+    upgrade.add_argument("--manifest", default=None,
+                         help="Manifest URL or file path; default: $NANA_IMAGE2_MANIFEST.")
+    upgrade.set_defaults(run=check_upgrade)
 
     listing = commands.add_parser("psd-layers", help="List the layers of a PSD file (offline, no provider access).")
     listing.add_argument("file")

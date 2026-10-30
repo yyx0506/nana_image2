@@ -73,10 +73,33 @@ if exist "%~dp0runtime\python.exe" (
         echo   [!!] Copying the bundled runtime failed.
         pause & exit /b 1
     )
-    echo   [ok] installed ^(with private runtime^) to %DEST%
-) else (
-    echo   [ok] installed to %DEST%
 )
+if exist "%~dp0runtime-x64\python.exe" (
+    xcopy /e /i /y /q runtime-x64 "%DEST%\runtime-x64" >nul
+)
+echo   [ok] installed to %DEST%
+
+rem ---- frozen third-party skills (vendor\) each land as their own skill ----
+set "SKILLDIRS=nana_image2"
+if exist "%~dp0vendor" (
+    for /d %%D in ("%~dp0vendor\*") do (
+        if exist "%%D\SKILL.md" (
+            set "VNAME=%%~nxD"
+            if exist "%USERPROFILE%\.codex\skills\!VNAME!" rmdir /s /q "%USERPROFILE%\.codex\skills\!VNAME!"
+            xcopy /e /i /y /q "%%D" "%USERPROFILE%\.codex\skills\!VNAME!" >nul
+            set "SKILLDIRS=!SKILLDIRS! !VNAME!"
+            echo   [ok] vendored skill installed: !VNAME!
+        )
+    )
+)
+set "PKGVER="
+for /f "tokens=2 delims==" %%V in ('findstr /b /c:"VERSION = " scripts\nana_image2.py') do set "PKGVER=%%V"
+set "PKGVER=!PKGVER:^"=!"
+> "%DEST%\.installed-manifest" (
+    echo # nana_image2 distribution !PKGVER! - installed skill dirs:
+    echo !SKILLDIRS!
+)
+if exist VENDOR-VERSIONS.txt echo   bundled third-party skills ^(frozen pins^): see VENDOR-VERSIONS.txt
 
 echo.
 echo ============================================================

@@ -1,0 +1,43 @@
+[
+  {
+    "name": "nana_image2 (this repo)",
+    "repo": "yyx0506/nana_image2",
+    "pinned": "v1.3.0"
+  },
+  {
+    "name": "taste-skill",
+    "repo": "Leonxlnx/taste-skill",
+    "pinned": "not-vendored-yet",
+    "note": "run: git clone https://github.com/Leonxlnx/taste-skill somewhere/, then make_dist --vendor taste-skill=somewhere/taste-skill; record the commit here"
+  },
+  {
+    "name": "python runtime (win)",
+    "repo": "astral/python-build-standalone",
+    "pinned": "20261026",
+    "note": "cpython-3.11.18+20261026 install_only_stripped, win x64"
+  },
+  {
+    "name": "python runtime (mac arm64)",
+    "repo": "astral/python-build-standalone",
+    "pinned": "20261026",
+    "note": "cpython-3.11.18+20261026 install_only_stripped, aarch64-apple-darwin"
+  },
+  {
+    "name": "python runtime (mac x64)",
+    "repo": "astral/python-build-standalone",
+    "pinned": "20261026",
+    "note": "cpython-3.11.18+20261026 install_only_stripped, x86_64-apple-darwin"
+  },
+  {
+    "name": "Real-ESRGAN (downstream upscaler, GUI build)",
+    "repo": "xinntao/Real-ESRGAN",
+    "pinned": "not-distributed-yet",
+    "note": "for colleagues use the GUI build: TransparentLC/realesrgan-gui; distribute it as a separate internal app, not inside this package"
+  },
+  {
+    "name": "rembg (downstream bg removal)",
+    "repo": "danielgatis/rembg",
+    "pinned": "not-distributed-yet",
+    "note": "optional: vendor as a bundled tool later (needs pip deps) or install on designer machines"
+  }
+]

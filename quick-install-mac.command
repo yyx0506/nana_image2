@@ -15,7 +15,7 @@ DEST="$HOME/.codex/skills/$SKILL_NAME"
 
 say() { printf '  %s\n' "$*"; }
 ok()  { printf '  [ok] %s\n' "$*"; }
-die() { printf 'error: %s\n' "$*" >&2; read -n 1 -s -r -p "Press any key to close."; exit 1; }
+die() { printf 'error: %s\n' "$*" >&2; read -n 1 -s -r -p "Press any key to close." || true; exit 1; }
 
 # ---- resolve Python: system first, bundled runtime as fallback ----
 PY=""
@@ -64,9 +64,27 @@ rm -rf "$DEST/scripts/__pycache__"
 if [ -d runtime ] || [ -d runtime-x64 ]; then
     [ -d runtime ] && cp -R runtime "$DEST/runtime"
     [ -d runtime-x64 ] && cp -R runtime-x64 "$DEST/runtime-x64"
-    ok "installed (with private runtimes) to $DEST"
-else
-    ok "installed to $DEST"
+fi
+ok "installed to $DEST"
+
+# ---- frozen third-party skills (vendor/) each land as their own skill ----
+INSTALLED="nana_image2"
+if [ -d vendor ]; then
+    for skill in vendor/*/; do
+        [ -f "$skill/SKILL.md" ] || continue
+        name="$(basename "$skill")"
+        rm -rf "$HOME/.codex/skills/$name"
+        cp -R "$skill" "$HOME/.codex/skills/$name"
+        rm -rf "$HOME/.codex/skills/$name/__pycache__"
+        INSTALLED="$INSTALLED $name"
+        ok "vendored skill installed: $name"
+    done
+fi
+PKG_VERSION="$(grep -m1 '^VERSION' scripts/nana_image2.py | cut -d'"' -f2)"
+{ echo "# nana_image2 distribution $PKG_VERSION - installed skill dirs:"; echo "$INSTALLED"; } \
+    > "$DEST/.installed-manifest"
+if [ -f VENDOR-VERSIONS.txt ]; then
+    say "bundled third-party skills (frozen pins): see VENDOR-VERSIONS.txt in the package"
 fi
 
 cat <<EOF
@@ -80,4 +98,4 @@ cat <<EOF
  (deletes $SKILL_NAME only; your Codex config is never touched)
 ============================================================
 EOF
-read -n 1 -s -r -p "Press any key to close."
+read -n 1 -s -r -p "Press any key to close." || true
