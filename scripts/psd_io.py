@@ -103,6 +103,32 @@ def read_png(path: Path) -> tuple[int, int, bytearray]:
         pos += 1
         row = bytearray(raw[pos:pos + stride])
         pos += stride
+        if filt == 0:
+            prev = row                     # nothing to undo on this row
+            base = y * width * 4
+            if channels == 4:
+                out[base:base + width * 4] = row       # RGBA bulk copy
+            elif channels == 3:
+                for x in range(width):
+                    o = base + x * 4
+                    out[o:o + 3] = row[x * 3:x * 3 + 3]
+                    out[o + 3] = 255
+            else:
+                for x in range(width):
+                    o = base + x * 4
+                    px = row[x * channels]
+                    if channels == 1:
+                        out[o] = out[o + 1] = out[o + 2] = px
+                        out[o + 3] = 255
+                    elif channels == 2:
+                        out[o] = out[o + 1] = out[o + 2] = px
+                        out[o + 3] = row[x * 2 + 1]
+                    else:  # palette
+                        if len(palette) < (px + 1) * 3:
+                            raise PsdError(f"{path}: palette index out of range.")
+                        out[o:o + 3] = palette[px * 3:px * 3 + 3]
+                        out[o + 3] = trns[px] if px < len(trns) else 255
+            continue
         for x in range(stride):
             left = row[x - channels] if x >= channels else 0
             up = prev[x]
@@ -145,12 +171,63 @@ def read_png(path: Path) -> tuple[int, int, bytearray]:
 # PSD reading
 # --------------------------------------------------------------------------
 class Layer:
+    """One PSD layer. Pixels are decoded lazily: listing layers never decodes,
+    and exporting one layer decodes only that layer."""
+
     def __init__(self, index: int, name: str, rect, visible: bool, opacity: int,
-                 flags: int, rgba: bytearray | None):
+                 flags: int, channel_specs, data):
         self.index, self.name = index, name
         self.top, self.left, self.bottom, self.right = rect
         self.visible, self.opacity, self.flags = visible, opacity, flags
-        self.rgba = rgba
+        self._specs = channel_specs      # [(chan_id, offset, length, compression)]
+        self._data = data                # memoryview of the whole file
+        ids = {spec[0] for spec in channel_specs}
+        comps_ok = all(spec[3] in (0, 1, 2, 3) for spec in channel_specs)
+        self.has_pixels = bool(self.width and self.height) and comps_ok and {0, 1, 2} <= ids
+        self._decoded = False
+        self._rgba = None
+
+    @property
+    def rgba(self):
+        if not self._decoded:
+            self._decode()
+        return self._rgba
+
+    def _decode(self):
+        self._decoded = True
+        w, h = self.width, self.height
+        if not w or not h or not self.has_pixels:
+            return
+        planes = {}
+        for chan_id, offset, length, compression in self._specs:
+            if chan_id not in (0, 1, 2, -1):
+                continue
+            data_start = offset + 2
+            try:
+                if compression == 0:
+                    plane = bytes(self._data[data_start:data_start + w * h])
+                elif compression == 1:
+                    counts = struct.unpack_from(f">{h}H", self._data, data_start)
+                    plane = bytes(_unpack_rle(bytes(self._data[data_start + h * 2:]), counts, w * h))
+                else:
+                    plane = zlib.decompress(bytes(self._data[data_start:data_start + length - 2]))
+                    if compression == 3:
+                        plane = _unpredict(plane, w, h)
+            except PsdError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                raise PsdError(f"layer '{self.name}' channel {chan_id}: {exc}") from exc
+            if len(plane) != w * h:
+                raise PsdError(f"layer '{self.name}' channel {chan_id} has {len(plane)} bytes, expected {w * h}.")
+            planes[chan_id] = plane
+        if not all(cid in planes for cid in (0, 1, 2)):
+            return
+        rgba = bytearray(w * h * 4)
+        rgba[0::4] = planes[0]            # strided slice assignment: C speed
+        rgba[1::4] = planes[1]
+        rgba[2::4] = planes[2]
+        rgba[3::4] = planes[-1] if -1 in planes else b"\xff" * (w * h)
+        self._rgba = rgba
 
     @property
     def width(self) -> int:
@@ -168,7 +245,7 @@ class Layer:
             "size": f"{self.width}x{self.height}",
             "visible": self.visible,
             "opacity": round(self.opacity / 255, 3),
-            "pixels": self.rgba is not None,
+            "pixels": self.has_pixels,
         }
 
 
@@ -281,43 +358,12 @@ def read_psd(path: Path) -> PsdDoc:
 
     layers = []
     for index, (name, rect, visible, opacity, flags, chan_info) in enumerate(records):
-        top, left, bottom, right = rect
-        w, h = max(0, right - left), max(0, bottom - top)
-        planes = {}
-        supported = True
+        specs = []
         for chan_id, length in chan_info:
             compression = struct.unpack_from(">H", data, offset)[0]
-            data_start = offset + 2
-            if compression not in (0, 1, 2, 3):
-                supported = False
-            elif w and h and chan_id in (0, 1, 2, -1):
-                try:
-                    if compression == 0:
-                        plane = bytes(data[data_start:data_start + w * h])
-                    elif compression == 1:
-                        counts = struct.unpack_from(f">{h}H", data, data_start)
-                        packed_start = data_start + h * 2
-                        plane = bytes(_unpack_rle(bytes(data[packed_start:]), counts, w * h))
-                    else:
-                        blob = bytes(data[data_start:data_start + length - 2])
-                        plane = zlib.decompress(blob)
-                        if compression == 3:
-                            plane = _unpredict(plane, w, h)
-                except Exception as exc:  # noqa: BLE001
-                    raise PsdError(f"{path}: layer '{name}' channel {chan_id}: {exc}") from exc
-                if len(plane) != w * h:
-                    raise PsdError(f"{path}: layer '{name}' channel {chan_id} has {len(plane)} bytes, expected {w * h}.")
-                planes[chan_id] = plane
+            specs.append((chan_id, offset, length, compression))
             offset += length
-        rgba = None
-        if supported and w and h and all(cid in planes for cid in (0, 1, 2)):
-            rgba = bytearray(w * h * 4)
-            for i in range(w * h):
-                rgba[i * 4] = planes[0][i]
-                rgba[i * 4 + 1] = planes[1][i]
-                rgba[i * 4 + 2] = planes[2][i]
-                rgba[i * 4 + 3] = planes[-1][i] if -1 in planes else 255
-        layers.append(Layer(index, name, rect, visible, opacity, flags, rgba))
+        layers.append(Layer(index, name, rect, visible, opacity, flags, specs, data))
 
     offset = max(offset, layer_info_end)
     composite = None
@@ -362,33 +408,40 @@ def _read_composite(data: memoryview, offset: int, width: int, height: int, chan
 # --------------------------------------------------------------------------
 # PSD writing
 # --------------------------------------------------------------------------
-def _plane(rgba: bytes, width: int, height: int, channel: int) -> bytes:
-    return bytes(rgba[(y * width + x) * 4 + channel]
-                 for y in range(height) for x in range(width))
+def _plane(rgba, width: int, height: int, channel: int) -> bytes:
+    # Strided slicing runs at C speed; the per-pixel generator it replaced
+    # was the write-side bottleneck on multi-megapixel canvases.
+    return bytes(rgba[channel::4])
+
+
+_RUN_PATTERN = re.compile(rb"(.)\1{2,127}", re.DOTALL)
 
 
 def _packbits(data: bytes) -> bytes:
-    """Encode PackBits runs (>=3) and literals; valid classic RLE."""
+    """Encode PackBits runs (>=3) and literals; valid classic RLE.
+
+    Run detection rides the regex engine (C speed); Python only touches
+    each run/literal chunk, not each byte.
+    """
     out = bytearray()
-    i, n = 0, len(data)
-    while i < n:
-        run = 1
-        while i + run < n and run < 128 and data[i + run] == data[i]:
-            run += 1
-        if run >= 3:
-            out.append(257 - run)
-            out.append(data[i])
-            i += run
-            continue
-        literal = 1
-        while i + literal < n and literal < 128:
-            j = i + literal
-            if j + 2 < n and data[j] == data[j + 1] == data[j + 2]:
-                break
-            literal += 1
-        out.append(literal - 1)
-        out += data[i:i + literal]
-        i += literal
+
+    def emit_literals(chunk: bytes) -> None:
+        nonlocal out
+        for start in range(0, len(chunk), 128):
+            piece = chunk[start:start + 128]
+            out.append(len(piece) - 1)
+            out += piece
+
+    pos = 0
+    for match in _RUN_PATTERN.finditer(data):
+        if match.start() > pos:
+            emit_literals(data[pos:match.start()])
+        run = match.end() - match.start()          # 3..128
+        out.append(257 - run)
+        out.append(data[match.start()])
+        pos = match.end()
+    if pos < len(data):
+        emit_literals(data[pos:])
     return bytes(out)
 
 
@@ -421,24 +474,60 @@ def _encode_channel(plane: bytes, width: int, height: int, compression: str) -> 
 
 
 def flatten(width: int, height: int, layers) -> bytearray:
-    """Simple source-over composite, bottom layer first, alpha respected."""
+    """Source-over composite, bottom layer first.
+
+    Fast paths keep megapixel canvases cheap: fully-opaque layers are a
+    C-speed slice copy, invisible/fully-transparent layers are skipped via
+    an alpha min/max scan. Only genuinely semi-transparent pixels go
+    through the per-pixel math.
+    """
     size = width * height
     out = bytearray(size * 4)
+    dst_opaque = False
     for layer in layers:
         if not layer.get("visible", True) or layer.get("rgba") is None:
             continue
-        src, op = layer["rgba"], layer.get("opacity", 255) / 255.0
+        src = layer["rgba"]
+        opn = layer.get("opacity", 255)
+        if opn <= 0:
+            continue
+        alpha = src[3::4]
+        a_lo = min(alpha)
+        if a_lo == 255 and opn == 255:
+            out[:] = src                       # opaque: straight copy (C speed)
+            dst_opaque = True
+            continue
+        if max(alpha) == 0:
+            continue                           # fully transparent: skip
+        if dst_opaque and a_lo == max(alpha):
+            # Uniform-alpha layer over an opaque destination (glows, solid
+            # overlays): per-channel blend via C-speed translate tables.
+            k = min(255, round(a_lo * opn / 255))
+            if k == 255:
+                out[:] = src
+                continue
+            ia = 255 - k
+            tm = bytes((v * k + 127) // 255 for v in range(256))
+            ti = bytes((v * ia + 127) // 255 for v in range(256))
+            for c in (0, 1, 2):
+                top = src[c::4].translate(tm)
+                bottom = out[c::4].translate(ti)
+                out[c::4] = bytes(v if v < 256 else 255
+                                  for v in map(int.__add__, top, bottom))
+            continue
         for i in range(size):
-            sa = src[i * 4 + 3] / 255.0 * op
+            sa = alpha[i] / 255.0 * opn / 255
             if sa == 0:
                 continue
             da = out[i * 4 + 3] / 255.0
             oa = sa + da * (1 - sa)
             if oa == 0:
                 continue
+            base = i * 4
+            inv = 1 - sa
             for c in range(3):
-                out[i * 4 + c] = int((src[i * 4 + c] * sa + out[i * 4 + c] * da * (1 - sa)) / oa)
-            out[i * 4 + 3] = int(oa * 255)
+                out[base + c] = int((src[base + c] * sa + out[base + c] * da * inv) / oa)
+            out[base + 3] = int(oa * 255)
     return out
 
 
