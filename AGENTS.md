@@ -7,6 +7,8 @@
 - Streaming: `generate` auto-streams slow jobs (quality high+ or explicit size >=2MP) to dodge proxy origin timeouts (Cloudflare 524); gateways that answer JSON despite `stream` fall back transparently. `edit` must never send a stream flag (sub2api #8027 -> 502 + pool drain).
 - Degradation verdict: with an explicit requested size, `save_response` must keep emitting the machine-readable `degraded` JSON line when the actual output or echoed model differs - that is the guard against the known silent downgrade.
 - Installers (`quick-install-*.command/.bat`, `quick-uninstall-*`) only copy or delete `~/.codex/skills/nanaiamge` (`%USERPROFILE%\.codex\skills\nanaiamge`). They must never modify Codex config.
+- `scripts/run` / `run.cmd` is the universal launcher: system Python 3.9+ first, then the bundled private `runtime/` (python-build-standalone). Always `-E -s` so developer environments are never touched; SKILL.md commands go through it.
+- `tools/make_dist.py --print-urls` documents the runtime downloads; dist zips are built with it and attached to GitHub Releases (never committed).
 - Keep README.md and SKILL.md synchronized with CLI defaults, routing, PSD boundaries, and startup instructions.
 - Verify with `python3 -B -m unittest discover -s tests -p 'test_*.py'` (offline, dummy credentials; includes PSD/PNG/TOML round-trips) and `git diff --check`. Do not run paid generation solely for verification.
 

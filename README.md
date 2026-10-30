@@ -27,16 +27,20 @@
 
 ## 安装
 
-### 方式一：一键安装（推荐给非技术同事，无需 git）
+### 方式一：自包含安装包（推荐给非技术同事，无需 git、无需装 Python）
 
-解压后双击：
+从 [Releases](https://github.com/yyx0506/nanaiamge/releases) 下载对应平台的包，解压后双击：
 
-| 平台 | 安装 | 卸载（一键删除） |
+| 安装包 | 适用 | 大小 |
 | --- | --- | --- |
-| Windows | `quick-install-windows.bat` | `quick-uninstall-windows.bat` |
-| macOS | `quick-install-mac.command` | `quick-uninstall-mac.command` |
+| `nanaiamge-windows-x64.zip` | Windows（内置私有 Python 运行时） | ~25MB |
+| `nanaiamge-macos.zip` | macOS M 系列（内置 arm64 运行时；Intel Mac 走系统 Python） | ~40MB |
 
-安装只是把 Skill 拷贝到 `~/.codex/skills/nanaiamge/`，**不修改任何 Codex 配置**；卸载就是删掉这个文件夹，机器恢复原样。安装脚本会先跑一遍离线自检。
+解压后双击 `quick-install-windows.bat` / `quick-install-mac.command` 即可。
+
+**Python 说明（对研发友好）**：优先使用系统 Python 3.9+（研发自己的 conda/pyenv/官方 Python 照常用，互不干扰）；没有 Python 的机器自动使用包内私有的便携运行时——它只存在于技能文件夹内部、仅以绝对路径调用（`-E -s` 隔离模式，忽略外部 PYTHONPATH/用户 site-packages），**不写 PATH、不写注册表、不装任何东西**，卸载即整体消失。安装包用 `python3 tools/make_dist.py` 构建。
+
+安装只是把 Skill 拷贝到 `~/.codex/skills/nanaiamge/`，**不修改任何 Codex 配置**；卸载（`quick-uninstall-*`）就是删掉这个文件夹，机器恢复原样。
 
 ### 方式二：git clone
 

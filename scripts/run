@@ -1,0 +1,36 @@
+#!/bin/sh
+# nanaiamge launcher - resolves a Python interpreter and runs the CLI.
+#
+# Resolution order:
+#   1. a system python3 (3.9+)  -> developers keep using their own Python
+#   2. the private runtime bundled inside this skill directory
+#
+# Isolation: the interpreter is invoked with -E -s (ignore PYTHON* env vars
+# and user site-packages), so a developer's conda/pyenv/virtualenv settings
+# can never leak in, and this tool never installs anything anywhere.
+set -eu
+
+here="$(cd "$(dirname "$0")" && pwd)"
+script="$here/nanaiamge.py"
+
+py=""
+if command -v python3 >/dev/null 2>&1; then
+    if python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+        py="python3"
+    fi
+fi
+if [ -z "$py" ]; then
+    for candidate in "$here/../runtime/bin/python3" "$here/../runtime/bin/python3.11" "$here/../runtime/bin/python3.13"; do
+        if [ -x "$candidate" ] && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+            py="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$py" ]; then
+    echo "error: no Python 3.9+ found (neither system python3 nor the bundled runtime)." >&2
+    echo "       Re-install using the full package that ships a bundled runtime." >&2
+    exit 1
+fi
+
+exec "$py" -E -s "$script" "$@"
