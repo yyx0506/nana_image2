@@ -34,7 +34,8 @@
 | 安装包 | 适用 | 大小 |
 | --- | --- | --- |
 | `nana_image2-windows-x64.zip` | Windows（内置私有 Python 运行时） | ~25MB |
-| `nana_image2-macos.zip` | macOS 全机型（内置 arm64 + x86_64 双运行时，M 系列和 Intel 都免装 Python） | ~66MB |
+| `nana_image2-macos-apple-silicon.zip` | macOS M 系列（M1-M4，内置 arm64 运行时） | ~40MB |
+| `nana_image2-macos-intel.zip` | macOS Intel 机型（内置 x86_64 运行时） | ~40MB |
 
 解压后双击 `quick-install-windows.bat` / `quick-install-mac.command` 即可。
 
