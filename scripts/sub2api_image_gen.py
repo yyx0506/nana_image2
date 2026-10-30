@@ -251,10 +251,105 @@ def detect_png_size(content: bytes) -> str | None:
     return None
 
 
-def save_response(result: dict[str, Any], paths: list[Path], requested_size: str) -> None:
+# Streaming is only ever used for /images/generations: slow 4K/high-quality
+# jobs can outrun Cloudflare's ~100s origin timeout (524) unless bytes start
+# flowing early, and sub2api's generations path handles SSE fine. The edits
+# path MUST stay non-streaming: sub2api issue #8027 shows edits+stream
+# returns 502 and burns the whole account pool via failover.
+SLOW_QUALITY = {"high", "xhigh", "max"}
+SLOW_AREA = 2_000_000  # ~2048x1024 and above tends to outrun the proxy timeout
+
+
+def _size_area(size: str | None) -> int | None:
+    match = re.fullmatch(r"([1-9][0-9]*)x([1-9][0-9]*)", size or "")
+    return int(match[1]) * int(match[2]) if match else None
+
+
+def should_stream(args: argparse.Namespace, payload: dict[str, Any]) -> bool:
+    mode = getattr(args, "stream", "auto")
+    if mode == "on":
+        return True
+    if mode == "off":
+        return False
+    if payload.get("quality") in SLOW_QUALITY:
+        return True
+    area = _size_area(payload.get("size"))
+    return bool(area and area >= SLOW_AREA)
+
+
+def request_events(url: str, headers: dict[str, str], payload: dict[str, Any]):
+    """POST expecting an SSE stream. Returns (events, None) on success,
+    (None, json_doc) when the server answered plain JSON despite stream=True
+    (some gateways ignore the flag), and exits on HTTP/network errors."""
+    body = json.dumps(payload).encode()
+    request_headers = dict(headers)
+    request_headers["Content-Type"] = "application/json"
+    request_headers["Accept"] = "text/event-stream"
+    request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=600) as response:
+            ctype = (response.headers.get("Content-Type") or "").lower()
+            if "text/event-stream" not in ctype:
+                raw = response.read() or b"{}"
+                try:
+                    return None, json.loads(raw)
+                except ValueError:
+                    fail(f"Non-SSE response from {url} that is not JSON either: {raw[:200]!r}")
+            events = []
+            for line in response:
+                text = line.decode("utf-8", "replace").strip()
+                if not text.startswith("data:"):
+                    continue
+                data = text[5:].strip()
+                if not data or data == "[DONE]":
+                    continue
+                try:
+                    events.append(json.loads(data))
+                except ValueError:
+                    continue
+            return events, None
+    except urllib.error.HTTPError as exc:
+        detail = exc.read(4000).decode("utf-8", "replace").strip()
+        fail(f"HTTP {exc.code} from {url}: {detail or exc.reason}")
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        fail(f"Could not reach {url}: {exc}")
+    return None, None  # unreachable
+
+
+def images_from_events(events: list[Any]) -> tuple[list[dict[str, Any]], dict[int, str]]:
+    """Split SSE events into (final_images, partial_images_by_index)."""
+    finals: list[dict[str, Any]] = []
+    partials: dict[int, str] = {}
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        error = event.get("error")
+        if isinstance(error, dict):
+            fail(f"Stream error event: {json.dumps(error, ensure_ascii=False)[:400]}")
+        items = event.get("data")
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict) and (item.get("b64_json") or item.get("url")):
+                    finals.append(item)
+            continue
+        kind = str(event.get("type") or "")
+        if isinstance(event.get("b64_json"), str):
+            if "partial" in kind or event.get("partial_image_index") is not None:
+                index = event.get("partial_image_index")
+                partials[int(index) if isinstance(index, int) else len(partials)] = event["b64_json"]
+            else:
+                finals.append({"b64_json": event["b64_json"], "size": event.get("size")})
+        elif isinstance(event.get("url"), str) and "partial" not in kind:
+            finals.append({"url": event["url"], "size": event.get("size")})
+    return finals, partials
+
+
+def save_response(result: dict[str, Any], paths: list[Path], requested_size: str,
+                  requested_model: str | None = None) -> None:
     items = result.get("data")
     if not isinstance(items, list) or len(items) < len(paths):
         fail("Image API response did not contain the expected data array.")
+    actual_sizes = []
     for item, path in zip(items, paths):
         if not isinstance(item, dict):
             fail("Image API returned an invalid data item.")
@@ -269,13 +364,34 @@ def save_response(result: dict[str, Any], paths: list[Path], requested_size: str
             fail("Image API response contained neither b64_json nor url.")
         atomic_write(path, content)
         actual_size = str(item.get("size") or "").strip() or detect_png_size(content)
-        if actual_size and requested_size != "auto" and actual_size.lower() != requested_size.lower():
-            print(
-                f"Warning: provider returned {actual_size} for requested {requested_size}; "
-                "saved original bytes without local upscaling.",
-                file=sys.stderr,
-            )
+        actual_sizes.append(actual_size)
         print(path.resolve())
+
+    # Degradation verdict: the known sub2api failure mode accepts the request
+    # with HTTP 200 but silently swaps model/size/quality (issues #6120,
+    # #3302, #7119). Surface it as machine-readable JSON on the last line so
+    # the agent reports it instead of trusting the 200.
+    verdict: dict[str, Any] | None = None
+    requested = str(requested_size or "").lower()
+    if requested and requested != "auto":
+        mismatch = next((size for size in actual_sizes
+                         if size and size.lower() != requested), None)
+        if mismatch:
+            verdict = {"degraded": True, "requested": requested_size, "actual": mismatch}
+    model_echo = result.get("model")
+    if requested_model and isinstance(model_echo, str) and model_echo != requested_model:
+        verdict = verdict or {"degraded": True}
+        verdict["requested_model"] = requested_model
+        verdict["model_echo"] = model_echo
+    if verdict:
+        verdict["advice"] = (
+            "Upstream returned 200 but did not honour the request (known sub2api "
+            "silent downgrade, issues #6120/#3302/#7119). Report the actual output; "
+            "retrying at a smaller explicit size or routing via an image-capable "
+            "channel is the workaround."
+        )
+        print("Warning: provider did not honour the requested parameters.", file=sys.stderr)
+        print(json.dumps(verdict, ensure_ascii=False))
 
 
 def multipart(fields: dict[str, str], files: list[tuple[str, Path]]) -> tuple[bytes, str]:
@@ -348,14 +464,41 @@ def generate(args: argparse.Namespace) -> None:
     payload = common_payload(args)
     paths = output_paths(args.out, args.n, args.output_format, args.force)
     base_url, headers, source = route(args)
+    use_stream = should_stream(args, payload)
+    if use_stream:
+        payload = dict(payload, stream=True)
     if args.dry_run:
-        print(json.dumps({"route": source, "endpoint": base_url + "/images/generations", "payload": payload, "outputs": [str(path) for path in paths]}, ensure_ascii=False, indent=2))
+        print(json.dumps({"route": source, "endpoint": base_url + "/images/generations",
+                          "stream": use_stream, "payload": payload,
+                          "outputs": [str(path) for path in paths]}, ensure_ascii=False, indent=2))
         return
-    result = request_json(base_url + "/images/generations", headers, json.dumps(payload).encode(), "application/json")
-    save_response(result, paths, args.size)
+    if use_stream:
+        events, fallback = request_events(base_url + "/images/generations", headers, payload)
+        if events is not None:
+            finals, partials = images_from_events(events)
+            if args.save_partials and partials:
+                for index, b64 in sorted(partials.items()):
+                    partial_path = paths[0].with_name(f"{paths[0].stem}-partial{index}.png")
+                    atomic_write(partial_path, base64.b64decode(b64))
+                    print(f"partial {index}: {partial_path.resolve()}")
+            if finals:
+                result: dict[str, Any] | None = {"data": finals}
+            elif partials:
+                print("Warning: stream ended without a final image; using the last partial image.", file=sys.stderr)
+                result = {"data": [{"b64_json": sorted(partials.items())[-1][1]}]}
+            else:
+                fail("Stream completed but contained no image data.")
+        else:
+            result = fallback  # gateway ignored stream=True and answered JSON
+    else:
+        result = request_json(base_url + "/images/generations", headers,
+                              json.dumps(payload).encode(), "application/json")
+    save_response(result or {}, paths, args.size, args.model)
 
 
 def edit(args: argparse.Namespace) -> None:
+    # Never streams: sub2api issue #8027 - edits+stream returns 502 and the
+    # failover drains the account pool. stream=false is answered correctly.
     image = Path(args.image)
     mask = Path(args.mask) if args.mask else None
     for path in [item for item in (image, mask) if item is not None]:
@@ -367,12 +510,12 @@ def edit(args: argparse.Namespace) -> None:
     paths = output_paths(args.out, args.n, args.output_format, args.force)
     base_url, headers, source = route(args)
     if args.dry_run:
-        print(json.dumps({"route": source, "endpoint": base_url + "/images/edits", "fields": payload, "image": str(image), "mask": str(mask) if mask else None, "outputs": [str(path) for path in paths]}, ensure_ascii=False, indent=2))
+        print(json.dumps({"route": source, "endpoint": base_url + "/images/edits", "stream": False, "fields": payload, "image": str(image), "mask": str(mask) if mask else None, "outputs": [str(path) for path in paths]}, ensure_ascii=False, indent=2))
         return
     fields = {key: str(value) for key, value in payload.items()}
     body, content_type = multipart(fields, [("image", image)] + ([("mask", mask)] if mask else []))
     result = request_json(base_url + "/images/edits", headers, body, content_type)
-    save_response(result, paths, args.size)
+    save_response(result, paths, args.size, args.model)
 
 
 # --------------------------------------------------------------------------
@@ -492,6 +635,16 @@ def parser() -> argparse.ArgumentParser:
         command.set_defaults(run=handler)
     commands.choices["edit"].add_argument("--image", required=True)
     commands.choices["edit"].add_argument("--mask")
+
+    # Streaming exists for generations only: it keeps bytes flowing so slow
+    # 4K/high-quality jobs do not hit proxy origin timeouts (Cloudflare 524).
+    # The edits path must never stream (sub2api #8027 -> 502 + pool drain),
+    # so edit intentionally gets no --stream flag at all.
+    gen = commands.choices["generate"]
+    gen.add_argument("--stream", choices=("auto", "on", "off"), default="auto",
+                     help="auto: stream only slow jobs (quality high+ or >=2MP); on/off force it. Generations only.")
+    gen.add_argument("--save-partials", action="store_true",
+                     help="Also save intermediate partial images from the stream.")
 
     listing = commands.add_parser("psd-layers", help="List the layers of a PSD file (offline, no provider access).")
     listing.add_argument("file")

@@ -19,8 +19,13 @@ Use the bundled dependency-free client instead of the system `imagegen` CLI. It 
 
 2. Normalize the user's request into a concise prompt. Preserve exact text and explicitly state edit invariants such as `change only the background; keep the subject unchanged`.
 3. Generate or edit exactly once, explicitly passing the same `--model <selected-model>` used for doctor. A user request to create/edit an image authorizes that call; diagnostics alone do not authorize a billed smoke test.
-4. Read the client's requested/actual-size warning, then inspect the untouched saved image with `view_image`. Retry only for a specific defect the user asked to fix.
+4. Read the output carefully. When an explicit size was requested, the client prints a final JSON verdict line: if it says `"degraded": true`, the upstream accepted the request but returned a different size/model (known sub2api silent downgrade, issues #6120/#3302/#7119) — report the ACTUAL size to the user along with the verdict's advice instead of claiming success. Inspect the saved image with `view_image`. Retry only for a specific defect the user asked to fix.
 5. Report the model, final prompt, and absolute saved path. For project assets, save under the project's `output/imagegen/` or the user-named path.
+
+Streaming rules (important, both are workaround-driven):
+
+- `generate` streams automatically for slow jobs (quality high/xhigh/max, or explicit size ≥2MP such as 4K): slow generations can outrun the proxy's ~100s origin timeout (Cloudflare 524) unless bytes flow early. `--stream on|off` forces it; `--save-partials` keeps intermediate images from the stream.
+- `edit` NEVER streams. sub2api issue #8027: edits+stream returns 502 and the failover drains the whole account pool. This client sends no stream flag on the edits path — do not work around that by hand.
 
 ## Prompt routing
 

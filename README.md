@@ -14,6 +14,8 @@
 - 使用非 OpenAI SDK 的 User-Agent，绕开已知的 sub2api / Cloudflare SDK 请求头拦截。
 - 支持图片生成、图片编辑、无费用连通性检查和脱敏 dry run。
 - **PSD 图层工作流（本 fork 新增）**：列出图层、导出指定图层为 PNG 喂给生成/编辑、把多张生成图合成为新的分层 PSD（Photoshop / Photopea / Krita / Affinity 均可打开）。
+- **4K 双保险（本 fork 新增）**：慢任务（high/xhigh/max 质量或 ≥2MP 显式尺寸）的 `generate` 自动改用流式，规避 Cloudflare 524 超时；`edit` 永不流式（规避 sub2api [#8027](https://github.com/Wei-Shaw/sub2api/issues/8027) 的 502+号池耗尽）。
+- **降级明确判定（本 fork 新增）**：显式请求尺寸时校验实际输出，发现被上游静默降级（[#6120](https://github.com/Wei-Shaw/sub2api/issues/6120)/[#3302](https://github.com/Wei-Shaw/sub2api/issues/3302)/[#7119](https://github.com/Wei-Shaw/sub2api/issues/7119)）时输出 `degraded: true` 的 JSON 判定与建议，不再只给一句 warning。
 - 仅依赖 Python 标准库，不安装 OpenAI SDK。
 - 默认使用 `gpt-image-2.5-sunburst`，尺寸为 `auto`；服务端返回多大就原样保存多大，不在本地超分、缩放、补边或重采样。
 
@@ -160,6 +162,7 @@ python3 scripts/sub2api_image_gen.py psd-compose \
 - Sunburst 和 Flare 均支持透明背景；使用 `--background transparent --output-format png`（或 `webp`）。
 - 实际支持的模型、尺寸和质量参数取决于上游兼容实现。
 - PSD 通道仅覆盖 8-bit RGB 的 AI 工作流子集（见上文边界表）。
+- 部分网关会忽略 `stream` 参数直接回 JSON——客户端已做兼容回退；`--stream on` 不保证一定是 SSE。
 
 ## License
 
