@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.9"
 # dependencies = []
 # ///
-"""Generate or edit images through a Codex custom provider without the OpenAI SDK."""
+"""Generate or edit images through a Codex custom provider without the OpenAI SDK.
+
+Also carries offline PSD helpers (psd-layers / psd-export / psd-compose) that
+bridge layered Photoshop files with the generate/edit commands; see psd_io.py.
+"""
 
 from __future__ import annotations
 
@@ -17,11 +21,20 @@ import re
 import struct
 import sys
 import tempfile
-import tomllib
+import uuid
 from typing import Any
 import urllib.error
 import urllib.request
-import uuid
+
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:  # Python 3.9/3.10: minimal fallback below
+    tomllib = None
+
+_SCRIPT_DIR = str(Path(__file__).resolve().parent)
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+import psd_io
 
 USER_AGENT = "codex-sub2api-imagegen/1.0"
 DEFAULT_MODEL = "gpt-image-2.5-sunburst"
@@ -30,6 +43,106 @@ IMAGE_25_MODELS = {"gpt-image-2.5-sunburst", "gpt-image-2.5-flare",
 DEFAULT_SIZE = "3840x2160"
 DEFAULT_OUT = "output/imagegen/output.png"
 MAX_INPUT_BYTES = 50 * 1024 * 1024
+
+
+# --------------------------------------------------------------------------
+# TOML fallback for Python 3.9/3.10: parses only the subset this tool reads
+# (top-level keys, [dotted.tables], string values, flat inline tables).
+# Anything richer fails loudly instead of guessing.
+# --------------------------------------------------------------------------
+def _strip_toml_comment(line: str) -> str:
+    out: list[str] = []
+    quoted, quote = False, ""
+    for ch in line:
+        if quoted:
+            out.append(ch)
+            if ch == quote:
+                quoted = False
+        elif ch in "\"'":
+            quoted, quote = True, ch
+            out.append(ch)
+        elif ch == "#":
+            break
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _split_inline(text: str) -> list[str]:
+    parts, buf = [], []
+    quoted, quote = False, ""
+    for ch in text:
+        if quoted:
+            buf.append(ch)
+            if ch == quote:
+                quoted = False
+        elif ch in "\"'":
+            quoted, quote = True, ch
+            buf.append(ch)
+        elif ch == ",":
+            parts.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    tail = "".join(buf).strip()
+    if tail:
+        parts.append(tail)
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _mini_value(text: str) -> Any:
+    if text.startswith("{") and text.endswith("}"):
+        table: dict[str, Any] = {}
+        for part in _split_inline(text[1:-1]):
+            key, sep, value = part.partition("=")
+            if not sep:
+                fail(f"unsupported config.toml inline entry: {part!r}")
+            table[key.strip().strip("\"'")] = _mini_value(value.strip())
+        return table
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        body = text[1:-1]
+        if text[0] == '"':
+            body = body.replace('\\"', '"').replace("\\\\", "\\")
+        return body
+    if text in ("true", "false"):
+        return text == "true"
+    for cast in (int, float):
+        try:
+            return cast(text)
+        except ValueError:
+            continue
+    fail(f"unsupported config.toml value: {text!r}")
+    return None  # unreachable
+
+
+def _mini_toml(text: str) -> dict[str, Any]:
+    root: dict[str, Any] = {}
+    table = root
+    for raw in text.splitlines():
+        line = _strip_toml_comment(raw).strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            if line.startswith("[["):
+                fail("array-of-tables syntax in config.toml is not supported on Python 3.9/3.10; upgrade to Python 3.11+ or simplify the provider block.")
+            table = root
+            for part in line[1:-1].split("."):
+                table = table.setdefault(part.strip().strip("\"'"), {})
+            continue
+        key, sep, value = line.partition("=")
+        if not sep:
+            fail(f"unsupported config.toml line: {raw.strip()!r}")
+        table[key.strip().strip("\"'")] = _mini_value(value.strip())
+    return root
+
+
+def _load_config(config_path: Path) -> dict[str, Any]:
+    if not config_path.exists():
+        return {}
+    text = config_path.read_text(encoding="utf-8")
+    if tomllib is not None:
+        return tomllib.loads(text)
+    return _mini_toml(text)
 
 
 def fail(message: str) -> None:
@@ -44,9 +157,7 @@ def default_config_path() -> Path:
 def load_route(config_path: Path, provider_name: str | None) -> tuple[str, dict[str, str], str]:
     env_url = os.environ.get("OPENAI_BASE_URL")
     env_key = os.environ.get("OPENAI_API_KEY")
-    config: dict[str, Any] = {}
-    if config_path.exists():
-        config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    config = _load_config(config_path)
 
     name = provider_name or str(config.get("model_provider", ""))
     provider = config.get("model_providers", {}).get(name, {}) if name else {}
@@ -264,6 +375,98 @@ def edit(args: argparse.Namespace) -> None:
     save_response(result, paths, args.size)
 
 
+# --------------------------------------------------------------------------
+# Offline PSD helpers: bridge layered Photoshop files with generate/edit.
+# These never touch the provider or credentials.
+# --------------------------------------------------------------------------
+def _require_file(value: str, what: str) -> Path:
+    path = Path(value).expanduser()
+    if not path.is_file():
+        fail(f"{what} not found: {path}")
+    return path
+
+
+def psd_layers(args: argparse.Namespace) -> None:
+    doc = psd_io.read_psd(_require_file(args.file, "PSD file"))
+    result = {"ok": True, "file": args.file, "canvas": f"{doc.width}x{doc.height}",
+              "layers": [layer.summary() for layer in doc.layers]}
+    if not doc.layers:
+        if doc.composite is not None:
+            result["layers"] = [{"index": 0, "name": "背景", "bbox": [0, 0, doc.width, doc.height],
+                                 "size": f"{doc.width}x{doc.height}", "visible": True,
+                                 "opacity": 1.0, "pixels": True}]
+            result["note"] = "flattened file with no layers; psd-export writes the composite image."
+        else:
+            result["note"] = "no pixel layers and no composite found."
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def psd_export(args: argparse.Namespace) -> None:
+    doc = psd_io.read_psd(_require_file(args.file, "PSD file"))
+    exports: list[tuple[str, int, int, bytes]] = []
+    if doc.layers:
+        if args.all:
+            chosen = [layer for layer in doc.layers if layer.rgba is not None]
+            if not chosen:
+                fail("No layer with decodable pixels; adjustment-type layers carry no bitmap.")
+        elif args.index is not None:
+            chosen = [next((layer for layer in doc.layers if layer.index == args.index), None) or fail(f"No layer with index {args.index}.")]
+        elif args.name:
+            chosen = [layer for layer in doc.layers if layer.name == args.name]
+            if len(chosen) > 1:
+                fail(f"Layer name '{args.name}' is ambiguous ({len(chosen)} matches); use --index.")
+            if not chosen:
+                fail(f"No layer named '{args.name}'. Run psd-layers to list names.")
+        else:
+            fail("psd-export needs --name, --index, or --all.")
+        for layer in chosen:
+            if layer.rgba is None:
+                print(f"Warning: layer '{layer.name}' has no pixel data; skipped.", file=sys.stderr)
+                continue
+            exports.append((layer.name, layer.width, layer.height, bytes(layer.rgba)))
+    elif doc.composite is not None:
+        exports.append(("背景", doc.width, doc.height, bytes(doc.composite)))
+    else:
+        fail("The PSD has neither layers nor a composite image.")
+
+    written = []
+    if args.all:
+        out_dir = Path(args.outdir or "output/imagegen").expanduser()
+        for number, (name, width, height, rgba) in enumerate(exports, 1):
+            safe = re.sub(r"[^0-9A-Za-z._-]+", "_", name).strip("_") or "layer"
+            path = out_dir / f"{number:02d}-{safe}.png"
+            if path.exists() and not args.force:
+                fail(f"Output already exists: {path} (pass --force to replace).")
+            psd_io.write_png(path, width, height, rgba)
+            written.append({"layer": name, "size": f"{width}x{height}", "path": str(path)})
+    else:
+        if not args.out:
+            fail("psd-export needs --out PATH (or --all with --outdir).")
+        if len(exports) != 1:
+            fail(f"{len(exports)} layers matched; use --all --outdir to export them all.")
+        name, width, height, rgba = exports[0]
+        path = Path(args.out).expanduser()
+        if path.exists() and not args.force:
+            fail(f"Output already exists: {path} (pass --force to replace).")
+        psd_io.write_png(path, width, height, rgba)
+        written.append({"layer": name, "size": f"{width}x{height}", "path": str(path)})
+    print(json.dumps({"ok": True, "exported": written}, ensure_ascii=False, indent=2))
+
+
+def psd_compose(args: argparse.Namespace) -> None:
+    entries = []
+    for spec in args.layer:
+        name, sep, path = spec.partition("=")
+        if not sep or not name.strip() or not path.strip():
+            fail(f"--layer must be NAME=PATH, got: {spec!r}")
+        entries.append((name.strip(), _require_file(path.strip(), "Layer PNG")))
+    out = Path(args.out).expanduser()
+    if out.exists() and not args.force:
+        fail(f"Output already exists: {out} (pass --force to replace).")
+    result = psd_io.compose_from_pngs(entries, out)
+    print(json.dumps({"ok": True, **result}, ensure_ascii=False, indent=2))
+
+
 def parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--config", default=str(default_config_path()))
@@ -289,6 +492,28 @@ def parser() -> argparse.ArgumentParser:
         command.set_defaults(run=handler)
     commands.choices["edit"].add_argument("--image", required=True)
     commands.choices["edit"].add_argument("--mask")
+
+    listing = commands.add_parser("psd-layers", help="List the layers of a PSD file (offline, no provider access).")
+    listing.add_argument("file")
+    listing.set_defaults(run=psd_layers)
+
+    export = commands.add_parser("psd-export", help="Export one layer (or all layers) of a PSD as PNG (offline).")
+    export.add_argument("file")
+    select = export.add_mutually_exclusive_group()
+    select.add_argument("--name", help="Layer name (unicode or Pascal); ambiguous names need --index.")
+    select.add_argument("--index", type=int, help="Layer index as reported by psd-layers.")
+    select.add_argument("--all", action="store_true", help="Export every layer with pixel data.")
+    export.add_argument("--out", help="Output PNG path for a single layer.")
+    export.add_argument("--outdir", help="Directory for --all exports (default output/imagegen).")
+    export.add_argument("--force", action="store_true")
+    export.set_defaults(run=psd_export)
+
+    compose = commands.add_parser("psd-compose", help="Compose PNGs into a new layered PSD (offline).")
+    compose.add_argument("--layer", action="append", required=True, metavar="NAME=PATH",
+                         help="Repeatable, bottom layer first; all PNGs must share one canvas size.")
+    compose.add_argument("--out", required=True, help="Output PSD path (a new file; never written back into an existing PSD).")
+    compose.add_argument("--force", action="store_true")
+    compose.set_defaults(run=psd_compose)
     return image
 
 

@@ -15,7 +15,7 @@ Use the bundled dependency-free client instead of the system `imagegen` CLI. It 
    python3 "<skill-dir>/scripts/sub2api_image_gen.py" doctor --model <selected-model>
    ```
 
-   Requires Python 3.11+. If Python is missing or older, replace `python3` with `uv run` in every command below; the script declares its Python requirement and uv provisions a compatible interpreter.
+   Requires Python 3.9+. On Python 3.9/3.10 the config parser falls back to a minimal TOML-subset reader that covers the provider blocks this skill needs; anything richer fails with a clear message instead of guessing. If Python is missing entirely, replace `python3` with `uv run` in every command below.
 
 2. Normalize the user's request into a concise prompt. Preserve exact text and explicitly state edit invariants such as `change only the background; keep the subject unchanged`.
 3. Generate or edit exactly once, explicitly passing the same `--model <selected-model>` used for doctor. A user request to create/edit an image authorizes that call; diagnostics alone do not authorize a billed smoke test.
@@ -52,6 +52,34 @@ python3 "<skill-dir>/scripts/sub2api_image_gen.py" edit \
 Use `--dry-run` to inspect a redacted request without network or cost. Use `--provider NAME` or `--config PATH` only when the active Codex provider is not the intended route. `OPENAI_BASE_URL` and `OPENAI_API_KEY` override config values when set.
 
 The config path is `--config`, then `$CODEX_HOME/config.toml`, then `~/.codex/config.toml`. Key precedence is environment, provider token, then `auth.json` beside the selected config. Only the top-level `OPENAI_API_KEY` is read, never OAuth tokens. The endpoint must still come from environment/config; auth fallback never switches providers or defaults to an official endpoint. Ensure the key belongs to that endpoint.
+
+## PSD layer workflow
+
+When the user mentions a PSD file, layers (图层), or wants generated assets delivered as a layered file, use the offline PSD helpers first; they never touch the provider or credentials.
+
+```bash
+# 1. Inspect: list layers (name/index/bbox/visibility) — always start here
+python3 "<skill-dir>/scripts/sub2api_image_gen.py" psd-layers poster.psd
+
+# 2. Extract one layer as PNG to feed generate/edit (or --all --outdir DIR)
+python3 "<skill-dir>/scripts/sub2api_image_gen.py" psd-export poster.psd --name 背景 --out output/bg.png
+
+# 3. Generate/edit with the exported layer as the reference image (billed, same rules as above)
+python3 "<skill-dir>/scripts/sub2api_image_gen.py" edit --image output/bg.png \
+  --model gpt-image-2.5-sunburst --prompt "..." --out output/bg-new.png
+
+# 4. Compose a NEW layered PSD (bottom layer first); original file is never modified
+python3 "<skill-dir>/scripts/sub2api_image_gen.py" psd-compose \
+  --layer "背景=output/bg-new.png" --layer "产品=output/product.png" --out output/poster-v2.psd
+```
+
+Rules and boundaries — state them plainly rather than working around them:
+
+- Supported: 8-bit RGB PSDs, layer records and bitmap pixels, raw/RLE/ZIP/ZIP-with-prediction compression; writing new layered PSDs (RLE channels) that Photoshop, Photopea, Krita and Affinity open.
+- Not supported (the command fails with a clear error, never silently): PSB, 16/32-bit depth, CMYK/grayscale modes, layer masks as separate exports, writing back into the existing PSD (`psd-compose` always produces a new file).
+- Layers without pixel data (adjustment layers) are listed with `pixels: false` and skipped on export; text layers come out as their rendered bitmap only.
+- All layer PNGs in `psd-compose` must share one canvas size; resize first or pick one canvas.
+- For "分层出图" requests (background/subject/decoration as separate images), generate each image at the same size, then compose.
 
 ## Resolution
 

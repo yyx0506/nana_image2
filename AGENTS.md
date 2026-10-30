@@ -1,9 +1,11 @@
 # Project conventions
 
-- `scripts/sub2api_image_gen.py` is a Python 3.11+ standard-library Images API client. Keep runtime dependencies empty; its inline metadata supports `uv run` without preinstalled Python.
+- `scripts/sub2api_image_gen.py` is a Python 3.9+ standard-library Images API client (on 3.11+ it uses `tomllib`; on 3.9/3.10 a minimal TOML-subset fallback parses provider blocks and fails loudly on anything richer). Keep runtime dependencies empty; its inline metadata supports `uv run` without preinstalled Python.
 - Default model is `gpt-image-2.5-sunburst` with `size=auto`. Both official 2.5 variants and their 2026-09-08 snapshots use the documented size constraints; `xhigh`/`max` quality is supported. Bare `gpt-image-2.5` is an unverified provider alias, never auto-selected or silently mapped.
 - Endpoint precedence: environment > selected Codex provider. Key precedence: environment > provider token > top-level `OPENAI_API_KEY` in `auth.json` beside the selected config. Never use OAuth tokens or silently change endpoints.
-- Keep README.md and SKILL.md synchronized with CLI defaults, routing, and startup instructions.
-- Verify with `uv run --python 3.11 tests/test_sub2api_image_gen.py` and `git diff --check`. Local tests use dummy credentials; do not run paid generation solely for verification.
+- PSD helpers (`psd-layers` / `psd-export` / `psd-compose`, backed by `scripts/psd_io.py`) are fully offline: no provider access, no credentials. The reader supports 8-bit RGB with raw/RLE/ZIP/ZIP-with-prediction; the writer produces RLE-channel layered PSDs. Anything outside that subset must keep failing with a clear `PsdError`, never a silent guess. `psd-compose` always writes a new file; never write back into an existing PSD.
+- Installers (`quick-install-*.command/.bat`, `quick-uninstall-*`) only copy or delete `~/.codex/skills/sub2api-imagegen` (`%USERPROFILE%\.codex\skills\sub2api-imagegen`). They must never modify Codex config.
+- Keep README.md and SKILL.md synchronized with CLI defaults, routing, PSD boundaries, and startup instructions.
+- Verify with `python3 -B -m unittest discover -s tests -p 'test_*.py'` (offline, dummy credentials; includes PSD/PNG/TOML round-trips) and `git diff --check`. Do not run paid generation solely for verification.
 
 - Public usage docs focus on GPT Image 2.5. Prompt routing lives in SKILL.md: explicit model wins; speed/drafts use Flare, precise edits/default use Sunburst. Always pass the selected full ID via --model; the CLI does not route prompt text.

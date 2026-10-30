@@ -2,6 +2,10 @@
 
 ![GPT Image 2.5：Sunburst 精细编辑、Flare 快速生图，支持 auth.json 回退和 uv 启动](assets/sub2api-imagegen-hero-2.5-workshops.png)
 
+> **本仓库是 fork**：原项目 [huysh3/sub2api-gpt-image-2](https://github.com/huysh3/sub2api-gpt-image-2)（MIT）。
+> 本 fork 增加了：PSD 图层处理（`psd-layers` / `psd-export` / `psd-compose`，纯标准库）、
+> Python 3.9+ 兼容（不再强制 3.11/tomllib）、以及给非技术同事用的双平台一键安装/卸载脚本。
+
 一个给 Codex 使用的图片生成 Skill：当内置 `$imagegen` 不可用、缺失或被自定义 provider / sub2api 拦截时，改用当前 Codex provider 直接调用兼容的 Images API。
 
 ## 特点
@@ -9,22 +13,34 @@
 - 自动读取当前 Codex provider 的 `base_url`、`experimental_bearer_token` 和自定义请求头。
 - 使用非 OpenAI SDK 的 User-Agent，绕开已知的 sub2api / Cloudflare SDK 请求头拦截。
 - 支持图片生成、图片编辑、无费用连通性检查和脱敏 dry run。
+- **PSD 图层工作流（本 fork 新增）**：列出图层、导出指定图层为 PNG 喂给生成/编辑、把多张生成图合成为新的分层 PSD（Photoshop / Photopea / Krita / Affinity 均可打开）。
 - 仅依赖 Python 标准库，不安装 OpenAI SDK。
 - 默认使用 `gpt-image-2.5-sunburst`，尺寸为 `auto`；服务端返回多大就原样保存多大，不在本地超分、缩放、补边或重采样。
 
 ## 环境要求
 
 - Codex
-- Python 3.11+，或 uv（自动准备兼容的 Python）
+- Python 3.9+（本 fork 已兼容 3.9/3.10；配置解析自动回退，复杂 TOML 会明确报错），或 uv
 - 已配置且支持 Images API 的 Codex custom provider / sub2api
 
 ## 安装
 
-把整个仓库直接克隆到 Skill 目录：
+### 方式一：一键安装（推荐给非技术同事，无需 git）
+
+解压后双击：
+
+| 平台 | 安装 | 卸载（一键删除） |
+| --- | --- | --- |
+| Windows | `quick-install-windows.bat` | `quick-uninstall-windows.bat` |
+| macOS | `quick-install-mac.command` | `quick-uninstall-mac.command` |
+
+安装只是把 Skill 拷贝到 `~/.codex/skills/sub2api-imagegen/`，**不修改任何 Codex 配置**；卸载就是删掉这个文件夹，机器恢复原样。安装脚本会先跑一遍离线自检。
+
+### 方式二：git clone
 
 ```bash
-mkdir -p ~/.agents/skills
-git clone https://github.com/huysh3/sub2api-gpt-image-2.git ~/.agents/skills/sub2api-imagegen
+mkdir -p ~/.codex/skills
+git clone https://github.com/yyx0506/sub2api-gpt-image-2.git ~/.codex/skills/sub2api-imagegen
 ```
 
 仓库根目录就是 Skill 根目录，不需要绑定或创建专属 Agent。重启 Codex 或开启一个新任务即可使用。
@@ -59,14 +75,14 @@ $sub2api-imagegen 使用 gpt-image-2.5-sunburst，纯文字生成一张像素风
 Codex 当前显式调用 Skill 使用 `$skill-name`；不需要手动执行底层 Python 命令。只有排查 provider 连通性时才需要：
 
 ```bash
-python3 ~/.agents/skills/sub2api-imagegen/scripts/sub2api_image_gen.py doctor
+python3 ~/.codex/skills/sub2api-imagegen/scripts/sub2api_image_gen.py doctor
 ```
 
-没有 Python 3.11+ 时，可直接使用 uv；脚本已声明 Python 版本，uv 会自动准备解释器（首次可能需要下载），无需安装 SDK：
+没有合适的 Python 时，可直接使用 uv；脚本已声明 Python 版本，uv 会自动准备解释器（首次可能需要下载），无需安装 SDK：
 
 ```bash
-uv run ~/.agents/skills/sub2api-imagegen/scripts/sub2api_image_gen.py doctor
-uv run ~/.agents/skills/sub2api-imagegen/scripts/sub2api_image_gen.py generate --model gpt-image-2.5-flare --prompt "雨夜霓虹街道" --out output/imagegen/street.png
+uv run ~/.codex/skills/sub2api-imagegen/scripts/sub2api_image_gen.py doctor
+uv run ~/.codex/skills/sub2api-imagegen/scripts/sub2api_image_gen.py generate --model gpt-image-2.5-flare --prompt "雨夜霓虹街道" --out output/imagegen/street.png
 ```
 
 `generate`、`edit`、`doctor` 均通过 `--model` 选择完整模型名，无需额外分型参数：
@@ -83,6 +99,36 @@ uv run ~/.agents/skills/sub2api-imagegen/scripts/sub2api_image_gen.py generate -
 2.5 默认尺寸为 `auto`；显式尺寸须为 16 的倍数，最长边 ≤3840，宽高比在 1:3～3:1，总像素 655,360～8,294,400；高于 2560×1440 属实验范围。透明背景使用 PNG 或 WebP。
 
 来源：[官方生图指南](https://developers.openai.com/api/docs/guides/image-generation)、[Sunburst](https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst)、[Flare](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare)（2026-09-27 核对）。当前 Hero 仅通过文字提示词生成，未传入参考图；请求使用 `model=gpt-image-2.5-sunburst`、`quality=high`，服务端返回 1672×941，原样保存。
+
+## PSD 图层工作流（本 fork 新增）
+
+三个**离线**子命令（不碰 provider、不需要凭证），把分层 PSD 和 AI 生图串起来：
+
+```bash
+# 1. 列出图层：名称 / 序号 / 位置 / 可见性 / 是否有像素数据
+python3 scripts/sub2api_image_gen.py psd-layers poster.psd
+
+# 2. 导出指定图层为 PNG（喂给 edit 做参考图；--all --outdir DIR 导出全部）
+python3 scripts/sub2api_image_gen.py psd-export poster.psd --name 背景 --out output/bg.png
+
+# 3. 生成/编辑（走正常付费链路）
+python3 scripts/sub2api_image_gen.py edit --image output/bg.png \
+  --model gpt-image-2.5-sunburst --prompt "换成夕阳背景" --out output/bg-new.png
+
+# 4. 合成新的分层 PSD（底层在前；原文件永不被修改）
+python3 scripts/sub2api_image_gen.py psd-compose \
+  --layer "背景=output/bg-new.png" --layer "产品=output/product.png" --out output/poster-v2.psd
+```
+
+支持与边界（超界会明确报错，绝不悄悄猜）：
+
+| 支持 | 不支持 |
+| --- | --- |
+| 8-bit RGB PSD；raw / RLE / ZIP / ZIP+预测 压缩 | PSB、16/32 位深、CMYK/灰度 |
+| 图层记录（名称/位置/可见性/不透明度）+ 位图像素 | 图层蒙版单独导出、调整层/文字层的可编辑往返（导出为渲染位图） |
+| 写出新分层 PSD（RLE 通道，PS/Photopea/Krita/Affinity 可开） | 写回原 PSD（compose 永远生成新文件） |
+
+在 Codex 里直接说：“把 poster.psd 的背景层换成夕阳，其他不动” 或 “分层给我出背景/主体/装饰三张图再合成 PSD”，Skill 会按 SKILL.md 的路由执行以上链路。
 
 ## 路由与凭证
 
@@ -113,15 +159,16 @@ uv run ~/.agents/skills/sub2api-imagegen/scripts/sub2api_image_gen.py generate -
 - 不自动重试付费请求。
 - Sunburst 和 Flare 均支持透明背景；使用 `--background transparent --output-format png`（或 `webp`）。
 - 实际支持的模型、尺寸和质量参数取决于上游兼容实现。
+- PSD 通道仅覆盖 8-bit RGB 的 AI 工作流子集（见上文边界表）。
 
 ## License
 
-本项目采用 [MIT License](LICENSE)。
+本项目采用 [MIT License](LICENSE)。原项目：[huysh3/sub2api-gpt-image-2](https://github.com/huysh3/sub2api-gpt-image-2)。
 
 ## 本地验证
 
 ```bash
-uv run --python 3.11 tests/test_sub2api_image_gen.py
+python3 -B -m unittest discover -s tests -p 'test_*.py'
 ```
 
-测试使用本地 HTTP 服务和虚拟凭证，不调用付费接口。
+测试使用本地 HTTP 服务和虚拟凭证，不调用付费接口；含 PSD/PNG/TOML 回归（往返一致性、全部压缩路径、合成与回滚）。
