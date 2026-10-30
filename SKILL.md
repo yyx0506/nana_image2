@@ -1,5 +1,5 @@
 ---
-name: "sub2api-imagegen"
+name: "nanaiamge"
 description: "Generate or edit raster images through the current Codex custom provider or sub2api when the built-in image_gen tool is unavailable, missing, or blocked. Use for image assets and visual variants; do not use for SVG, HTML/CSS, diagrams, or other deterministic code-native visuals."
 ---
 
@@ -12,7 +12,7 @@ Use the bundled dependency-free client instead of the system `imagegen` CLI. It 
 1. Select the model using the prompt-routing rules below, then resolve `<skill-dir>` as the directory containing this `SKILL.md`. Run the no-cost connectivity check:
 
    ```bash
-   python3 "<skill-dir>/scripts/sub2api_image_gen.py" doctor --model <selected-model>
+   python3 "<skill-dir>/scripts/nanaiamge.py" doctor --model <selected-model>
    ```
 
    Requires Python 3.9+. On Python 3.9/3.10 the config parser falls back to a minimal TOML-subset reader that covers the provider blocks this skill needs; anything richer fails with a clear message instead of guessing. If Python is missing entirely, replace `python3` with `uv run` in every command below.
@@ -37,7 +37,7 @@ Streaming rules (important, both are workaround-driven):
 Generate:
 
 ```bash
-python3 "<skill-dir>/scripts/sub2api_image_gen.py" generate \
+python3 "<skill-dir>/scripts/nanaiamge.py" generate \
   --model gpt-image-2.5-flare \
   --prompt "A ceramic coffee mug in soft studio light; no logo, text, or watermark" \
   --quality medium \
@@ -47,7 +47,7 @@ python3 "<skill-dir>/scripts/sub2api_image_gen.py" generate \
 Edit:
 
 ```bash
-python3 "<skill-dir>/scripts/sub2api_image_gen.py" edit \
+python3 "<skill-dir>/scripts/nanaiamge.py" edit \
   --model gpt-image-2.5-sunburst \
   --image input.png \
   --prompt "Replace only the background with a warm sunset; keep the product and edges unchanged" \
@@ -64,17 +64,17 @@ When the user mentions a PSD file, layers (图层), or wants generated assets de
 
 ```bash
 # 1. Inspect: list layers (name/index/bbox/visibility) — always start here
-python3 "<skill-dir>/scripts/sub2api_image_gen.py" psd-layers poster.psd
+python3 "<skill-dir>/scripts/nanaiamge.py" psd-layers poster.psd
 
 # 2. Extract one layer as PNG to feed generate/edit (or --all --outdir DIR)
-python3 "<skill-dir>/scripts/sub2api_image_gen.py" psd-export poster.psd --name 背景 --out output/bg.png
+python3 "<skill-dir>/scripts/nanaiamge.py" psd-export poster.psd --name 背景 --out output/bg.png
 
 # 3. Generate/edit with the exported layer as the reference image (billed, same rules as above)
-python3 "<skill-dir>/scripts/sub2api_image_gen.py" edit --image output/bg.png \
+python3 "<skill-dir>/scripts/nanaiamge.py" edit --image output/bg.png \
   --model gpt-image-2.5-sunburst --prompt "..." --out output/bg-new.png
 
 # 4. Compose a NEW layered PSD (bottom layer first); original file is never modified
-python3 "<skill-dir>/scripts/sub2api_image_gen.py" psd-compose \
+python3 "<skill-dir>/scripts/nanaiamge.py" psd-compose \
   --layer "背景=output/bg-new.png" --layer "产品=output/product.png" --out output/poster-v2.psd
 ```
 

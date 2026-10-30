@@ -14,7 +14,7 @@ spec = importlib.util.spec_from_file_location("psd_io", SCRIPTS / "psd_io.py")
 psd = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(psd)
 
-client_spec = importlib.util.spec_from_file_location("image_client", SCRIPTS / "sub2api_image_gen.py")
+client_spec = importlib.util.spec_from_file_location("image_client", SCRIPTS / "nanaiamge.py")
 client = importlib.util.module_from_spec(client_spec)
 client_spec.loader.exec_module(client)
 

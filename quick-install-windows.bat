@@ -1,13 +1,13 @@
 @echo off
 rem =========================================================================
-rem  sub2api-imagegen - one-click install for Codex (Windows)
-rem  Copies the skill into %USERPROFILE%\.codex\skills\sub2api-imagegen and
+rem  nanaiamge - one-click install for Codex (Windows)
+rem  Copies the skill into %USERPROFILE%\.codex\skills\nanaiamge and
 rem  checks Python. No config is modified; uninstall = quick-uninstall-windows.bat
 rem =========================================================================
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
-set "SKILL_NAME=sub2api-imagegen"
+set "SKILL_NAME=nanaiamge"
 set "DEST=%USERPROFILE%\.codex\skills\%SKILL_NAME%"
 
 rem ---- Python (3.9+; the CLI works without the OpenAI SDK) ----
@@ -25,7 +25,7 @@ echo   [ok] Python found: !PY!
 
 rem ---- sanity ----
 if not exist SKILL.md goto broken
-if not exist scripts\sub2api_image_gen.py goto broken
+if not exist scripts\nanaiamge.py goto broken
 if not exist scripts\psd_io.py goto broken
 goto copyskill
 :broken
@@ -47,7 +47,7 @@ echo   [ok] installed to %DEST%
 echo.
 echo ============================================================
 echo  Done. Restart Codex, then try:
-echo    "用 sub2api-imagegen 生成一张 1024x1024 的橙色猫海报"
+echo    "用 nanaiamge 生成一张 1024x1024 的橙色猫海报"
 echo    "把 poster.psd 的背景层导出来，换成夕阳背景再合成 PSD"
 echo.
 echo  Rollback: double-click quick-uninstall-windows.bat

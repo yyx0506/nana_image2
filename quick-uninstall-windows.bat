@@ -1,12 +1,12 @@
 @echo off
 rem =========================================================================
-rem  sub2api-imagegen - one-click rollback (Windows)
-rem  Deletes %USERPROFILE%\.codex\skills\sub2api-imagegen. Nothing else is
+rem  nanaiamge - one-click rollback (Windows)
+rem  Deletes %USERPROFILE%\.codex\skills\nanaiamge. Nothing else is
 rem  touched: the skill only ever READS the Codex config, so there is
 rem  nothing to undo.
 rem =========================================================================
 setlocal
-set "DEST=%USERPROFILE%\.codex\skills\sub2api-imagegen"
+set "DEST=%USERPROFILE%\.codex\skills\nanaiamge"
 
 if exist "%DEST%" (
     rmdir /s /q "%DEST%"

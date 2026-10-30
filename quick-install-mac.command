@@ -1,14 +1,14 @@
 #!/bin/bash
 # ===========================================================================
-#  sub2api-imagegen - one-click install for Codex (macOS, Apple Silicon/Intel)
-#  Copies the skill into ~/.codex/skills/sub2api-imagegen and checks Python.
+#  nanaiamge - one-click install for Codex (macOS, Apple Silicon/Intel)
+#  Copies the skill into ~/.codex/skills/nanaiamge and checks Python.
 #  No config is modified; uninstall = double-click quick-uninstall-mac.command
 #  (or just delete the folder).
 # ===========================================================================
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SKILL_NAME="sub2api-imagegen"
+SKILL_NAME="nanaiamge"
 DEST="$HOME/.codex/skills/$SKILL_NAME"
 
 say() { printf '  %s\n' "$*"; }
@@ -23,7 +23,7 @@ PY="$(command -v python3 || true)"
 ok "Python $("$PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])') ($("$PY" -c 'import platform; print(platform.machine())'))"
 
 # ---- sanity: the pieces we copy must exist here ----
-[ -f SKILL.md ] && [ -f scripts/sub2api_image_gen.py ] && [ -f scripts/psd_io.py ] \
+[ -f SKILL.md ] && [ -f scripts/nanaiamge.py ] && [ -f scripts/psd_io.py ] \
     || die "run this from the unpacked skill folder (SKILL.md must be next to it)."
 
 # ---- offline self-test before touching anything ----
@@ -43,7 +43,7 @@ cat <<EOF
 
 ============================================================
  Done. Restart Codex, then try:
-     "用 sub2api-imagegen 生成一张 1024x1024 的橙色猫海报"
+     "用 nanaiamge 生成一张 1024x1024 的橙色猫海报"
      "把 poster.psd 的背景层导出来，换成夕阳背景再合成 PSD"
 
  Rollback: double-click quick-uninstall-mac.command

@@ -1,8 +1,8 @@
-# codex-sub2api-image-gen
+# nanaiamge
 
-![GPT Image 2.5：Sunburst 精细编辑、Flare 快速生图，支持 auth.json 回退和 uv 启动](assets/sub2api-imagegen-hero-2.5-workshops.png)
+![GPT Image 2.5：Sunburst 精细编辑、Flare 快速生图，支持 auth.json 回退和 uv 启动](assets/nanaiamge-hero-2.5-workshops.png)
 
-> 来源仓库：https://github.com/yyx0506/sub2api-gpt-image-2
+> 来源仓库：https://github.com/yyx0506/nanaiamge
 > 内置：PSD 图层处理（`psd-layers` / `psd-export` / `psd-compose`，纯标准库）、
 > Python 3.9+ 兼容、4K 流式与降级判定、以及给非技术同事用的双平台一键安装/卸载脚本。
 
@@ -36,13 +36,13 @@
 | Windows | `quick-install-windows.bat` | `quick-uninstall-windows.bat` |
 | macOS | `quick-install-mac.command` | `quick-uninstall-mac.command` |
 
-安装只是把 Skill 拷贝到 `~/.codex/skills/sub2api-imagegen/`，**不修改任何 Codex 配置**；卸载就是删掉这个文件夹，机器恢复原样。安装脚本会先跑一遍离线自检。
+安装只是把 Skill 拷贝到 `~/.codex/skills/nanaiamge/`，**不修改任何 Codex 配置**；卸载就是删掉这个文件夹，机器恢复原样。安装脚本会先跑一遍离线自检。
 
 ### 方式二：git clone
 
 ```bash
 mkdir -p ~/.codex/skills
-git clone https://github.com/yyx0506/sub2api-gpt-image-2.git ~/.codex/skills/sub2api-imagegen
+git clone https://github.com/yyx0506/nanaiamge.git ~/.codex/skills/nanaiamge
 ```
 
 仓库根目录就是 Skill 根目录，不需要绑定或创建专属 Agent。重启 Codex 或开启一个新任务即可使用。
@@ -52,17 +52,17 @@ git clone https://github.com/yyx0506/sub2api-gpt-image-2.git ~/.codex/skills/sub
 在提示词中指定模型，Codex 会把选择转换为客户端的 `--model` 参数：
 
 ```text
-$sub2api-imagegen 用 Flare 快速生成一张雨夜霓虹街道的横版图片
+$nanaiamge 用 Flare 快速生成一张雨夜霓虹街道的横版图片
 ```
 
 ```text
-$sub2api-imagegen 用 Sunburst 编辑 input.png，只把背景换成日落，主体和文字保持不变
+$nanaiamge 用 Sunburst 编辑 input.png，只把背景换成日落，主体和文字保持不变
 ```
 
 也可以直接写完整模型名，例如：
 
 ```text
-$sub2api-imagegen 使用 gpt-image-2.5-sunburst，纯文字生成一张像素风海报，不使用参考图
+$nanaiamge 使用 gpt-image-2.5-sunburst，纯文字生成一张像素风海报，不使用参考图
 ```
 
 | 提示词意图 | Codex 传入的模型 |
@@ -77,14 +77,14 @@ $sub2api-imagegen 使用 gpt-image-2.5-sunburst，纯文字生成一张像素风
 Codex 当前显式调用 Skill 使用 `$skill-name`；不需要手动执行底层 Python 命令。只有排查 provider 连通性时才需要：
 
 ```bash
-python3 ~/.codex/skills/sub2api-imagegen/scripts/sub2api_image_gen.py doctor
+python3 ~/.codex/skills/nanaiamge/scripts/nanaiamge.py doctor
 ```
 
 没有合适的 Python 时，可直接使用 uv；脚本已声明 Python 版本，uv 会自动准备解释器（首次可能需要下载），无需安装 SDK：
 
 ```bash
-uv run ~/.codex/skills/sub2api-imagegen/scripts/sub2api_image_gen.py doctor
-uv run ~/.codex/skills/sub2api-imagegen/scripts/sub2api_image_gen.py generate --model gpt-image-2.5-flare --prompt "雨夜霓虹街道" --out output/imagegen/street.png
+uv run ~/.codex/skills/nanaiamge/scripts/nanaiamge.py doctor
+uv run ~/.codex/skills/nanaiamge/scripts/nanaiamge.py generate --model gpt-image-2.5-flare --prompt "雨夜霓虹街道" --out output/imagegen/street.png
 ```
 
 `generate`、`edit`、`doctor` 均通过 `--model` 选择完整模型名，无需额外分型参数：
@@ -108,17 +108,17 @@ uv run ~/.codex/skills/sub2api-imagegen/scripts/sub2api_image_gen.py generate --
 
 ```bash
 # 1. 列出图层：名称 / 序号 / 位置 / 可见性 / 是否有像素数据
-python3 scripts/sub2api_image_gen.py psd-layers poster.psd
+python3 scripts/nanaiamge.py psd-layers poster.psd
 
 # 2. 导出指定图层为 PNG（喂给 edit 做参考图；--all --outdir DIR 导出全部）
-python3 scripts/sub2api_image_gen.py psd-export poster.psd --name 背景 --out output/bg.png
+python3 scripts/nanaiamge.py psd-export poster.psd --name 背景 --out output/bg.png
 
 # 3. 生成/编辑（走正常付费链路）
-python3 scripts/sub2api_image_gen.py edit --image output/bg.png \
+python3 scripts/nanaiamge.py edit --image output/bg.png \
   --model gpt-image-2.5-sunburst --prompt "换成夕阳背景" --out output/bg-new.png
 
 # 4. 合成新的分层 PSD（底层在前；原文件永不被修改）
-python3 scripts/sub2api_image_gen.py psd-compose \
+python3 scripts/nanaiamge.py psd-compose \
   --layer "背景=output/bg-new.png" --layer "产品=output/product.png" --out output/poster-v2.psd
 ```
 
@@ -166,7 +166,7 @@ python3 scripts/sub2api_image_gen.py psd-compose \
 
 ## License
 
-本项目采用 [MIT License](LICENSE)。来源仓库：[yyx0506/sub2api-gpt-image-2](https://github.com/yyx0506/sub2api-gpt-image-2)。
+本项目采用 [MIT License](LICENSE)。来源仓库：[yyx0506/nanaiamge](https://github.com/yyx0506/nanaiamge)。
 
 ## 本地验证
 

@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 
 PNG_1X1 = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XxKjWQAAAABJRU5ErkJggg==")
-SCRIPT = Path(__file__).parents[1] / "scripts/sub2api_image_gen.py"
+SCRIPT = Path(__file__).parents[1] / "scripts/nanaiamge.py"
 spec = importlib.util.spec_from_file_location("image_client", SCRIPT)
 client = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(client)
@@ -28,7 +28,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         assert self.path == "/v1/models"
         assert self.headers["Authorization"] == "Bearer not-a-secret"
-        assert self.headers["User-Agent"] == "codex-sub2api-imagegen/1.0"
+        assert self.headers["User-Agent"] == "codex-nanaiamge/1.0"
         self.reply(json.dumps({"data": [{"id": model} for model in
                               ("gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-2")]}).encode())
 

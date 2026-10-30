@@ -1,12 +1,12 @@
 #!/bin/bash
 # ===========================================================================
-#  sub2api-imagegen - one-click rollback (macOS)
-#  Deletes ~/.codex/skills/sub2api-imagegen. Nothing else is touched:
+#  nanaiamge - one-click rollback (macOS)
+#  Deletes ~/.codex/skills/nanaiamge. Nothing else is touched:
 #  the skill only ever READS the Codex config, so there is nothing to undo.
 # ===========================================================================
 set -euo pipefail
 
-SKILL_NAME="sub2api-imagegen"
+SKILL_NAME="nanaiamge"
 DEST="$HOME/.codex/skills/$SKILL_NAME"
 
 if [ -d "$DEST" ]; then
