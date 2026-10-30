@@ -1,8 +1,8 @@
-# nanaiamge
+# nana_image2
 
-![GPT Image 2.5：Sunburst 精细编辑、Flare 快速生图，支持 auth.json 回退和 uv 启动](assets/nanaiamge-hero-2.5-workshops.png)
+![GPT Image 2.5：Sunburst 精细编辑、Flare 快速生图，支持 auth.json 回退和 uv 启动](assets/nana_image2-hero-2.5-workshops.png)
 
-> 来源仓库：https://github.com/yyx0506/nanaiamge
+> 来源仓库：https://github.com/yyx0506/nana_image2
 > 内置：PSD 图层处理（`psd-layers` / `psd-export` / `psd-compose`，纯标准库）、
 > Python 3.9+ 兼容、4K 流式与降级判定、以及给非技术同事用的双平台一键安装/卸载脚本。
 
@@ -29,24 +29,24 @@
 
 ### 方式一：自包含安装包（推荐给非技术同事，无需 git、无需装 Python）
 
-从 [Releases](https://github.com/yyx0506/nanaiamge/releases) 下载对应平台的包，解压后双击：
+从 [Releases](https://github.com/yyx0506/nana_image2/releases) 下载对应平台的包，解压后双击：
 
 | 安装包 | 适用 | 大小 |
 | --- | --- | --- |
-| `nanaiamge-windows-x64.zip` | Windows（内置私有 Python 运行时） | ~25MB |
-| `nanaiamge-macos.zip` | macOS M 系列（内置 arm64 运行时；Intel Mac 走系统 Python） | ~40MB |
+| `nana_image2-windows-x64.zip` | Windows（内置私有 Python 运行时） | ~25MB |
+| `nana_image2-macos.zip` | macOS M 系列（内置 arm64 运行时；Intel Mac 走系统 Python） | ~40MB |
 
 解压后双击 `quick-install-windows.bat` / `quick-install-mac.command` 即可。
 
 **Python 说明（对研发友好）**：优先使用系统 Python 3.9+（研发自己的 conda/pyenv/官方 Python 照常用，互不干扰）；没有 Python 的机器自动使用包内私有的便携运行时——它只存在于技能文件夹内部、仅以绝对路径调用（`-E -s` 隔离模式，忽略外部 PYTHONPATH/用户 site-packages），**不写 PATH、不写注册表、不装任何东西**，卸载即整体消失。安装包用 `python3 tools/make_dist.py` 构建。
 
-安装只是把 Skill 拷贝到 `~/.codex/skills/nanaiamge/`，**不修改任何 Codex 配置**；卸载（`quick-uninstall-*`）就是删掉这个文件夹，机器恢复原样。
+安装只是把 Skill 拷贝到 `~/.codex/skills/nana_image2/`，**不修改任何 Codex 配置**；卸载（`quick-uninstall-*`）就是删掉这个文件夹，机器恢复原样。
 
 ### 方式二：git clone
 
 ```bash
 mkdir -p ~/.codex/skills
-git clone https://github.com/yyx0506/nanaiamge.git ~/.codex/skills/nanaiamge
+git clone https://github.com/yyx0506/nana_image2.git ~/.codex/skills/nana_image2
 ```
 
 仓库根目录就是 Skill 根目录，不需要绑定或创建专属 Agent。重启 Codex 或开启一个新任务即可使用。
@@ -56,17 +56,17 @@ git clone https://github.com/yyx0506/nanaiamge.git ~/.codex/skills/nanaiamge
 在提示词中指定模型，Codex 会把选择转换为客户端的 `--model` 参数：
 
 ```text
-$nanaiamge 用 Flare 快速生成一张雨夜霓虹街道的横版图片
+$nana_image2 用 Flare 快速生成一张雨夜霓虹街道的横版图片
 ```
 
 ```text
-$nanaiamge 用 Sunburst 编辑 input.png，只把背景换成日落，主体和文字保持不变
+$nana_image2 用 Sunburst 编辑 input.png，只把背景换成日落，主体和文字保持不变
 ```
 
 也可以直接写完整模型名，例如：
 
 ```text
-$nanaiamge 使用 gpt-image-2.5-sunburst，纯文字生成一张像素风海报，不使用参考图
+$nana_image2 使用 gpt-image-2.5-sunburst，纯文字生成一张像素风海报，不使用参考图
 ```
 
 | 提示词意图 | Codex 传入的模型 |
@@ -81,14 +81,14 @@ $nanaiamge 使用 gpt-image-2.5-sunburst，纯文字生成一张像素风海报�
 Codex 当前显式调用 Skill 使用 `$skill-name`；不需要手动执行底层 Python 命令。只有排查 provider 连通性时才需要：
 
 ```bash
-python3 ~/.codex/skills/nanaiamge/scripts/nanaiamge.py doctor
+python3 ~/.codex/skills/nana_image2/scripts/nana_image2.py doctor
 ```
 
 没有合适的 Python 时，可直接使用 uv；脚本已声明 Python 版本，uv 会自动准备解释器（首次可能需要下载），无需安装 SDK：
 
 ```bash
-uv run ~/.codex/skills/nanaiamge/scripts/nanaiamge.py doctor
-uv run ~/.codex/skills/nanaiamge/scripts/nanaiamge.py generate --model gpt-image-2.5-flare --prompt "雨夜霓虹街道" --out output/imagegen/street.png
+uv run ~/.codex/skills/nana_image2/scripts/nana_image2.py doctor
+uv run ~/.codex/skills/nana_image2/scripts/nana_image2.py generate --model gpt-image-2.5-flare --prompt "雨夜霓虹街道" --out output/imagegen/street.png
 ```
 
 `generate`、`edit`、`doctor` 均通过 `--model` 选择完整模型名，无需额外分型参数：
@@ -112,17 +112,17 @@ uv run ~/.codex/skills/nanaiamge/scripts/nanaiamge.py generate --model gpt-image
 
 ```bash
 # 1. 列出图层：名称 / 序号 / 位置 / 可见性 / 是否有像素数据
-python3 scripts/nanaiamge.py psd-layers poster.psd
+python3 scripts/nana_image2.py psd-layers poster.psd
 
 # 2. 导出指定图层为 PNG（喂给 edit 做参考图；--all --outdir DIR 导出全部）
-python3 scripts/nanaiamge.py psd-export poster.psd --name 背景 --out output/bg.png
+python3 scripts/nana_image2.py psd-export poster.psd --name 背景 --out output/bg.png
 
 # 3. 生成/编辑（走正常付费链路）
-python3 scripts/nanaiamge.py edit --image output/bg.png \
+python3 scripts/nana_image2.py edit --image output/bg.png \
   --model gpt-image-2.5-sunburst --prompt "换成夕阳背景" --out output/bg-new.png
 
 # 4. 合成新的分层 PSD（底层在前；原文件永不被修改）
-python3 scripts/nanaiamge.py psd-compose \
+python3 scripts/nana_image2.py psd-compose \
   --layer "背景=output/bg-new.png" --layer "产品=output/product.png" --out output/poster-v2.psd
 ```
 
@@ -170,7 +170,7 @@ python3 scripts/nanaiamge.py psd-compose \
 
 ## License
 
-本项目采用 [MIT License](LICENSE)。来源仓库：[yyx0506/nanaiamge](https://github.com/yyx0506/nanaiamge)。
+本项目采用 [MIT License](LICENSE)。来源仓库：[yyx0506/nana_image2](https://github.com/yyx0506/nana_image2)。
 
 ## 本地验证
 

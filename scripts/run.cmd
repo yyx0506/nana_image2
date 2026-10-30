@@ -1,6 +1,6 @@
 @echo off
 rem =========================================================================
-rem  nanaiamge launcher - resolves a Python interpreter and runs the CLI.
+rem  nana_image2 launcher - resolves a Python interpreter and runs the CLI.
 rem
 rem  Resolution order:
 rem    1. a system python3 / py -3 (3.9+)  -> developers keep their own Python
@@ -12,7 +12,7 @@ rem  installs anything anywhere.
 rem =========================================================================
 setlocal
 set "HERE=%~dp0"
-set "SCRIPT=%HERE%nanaiamge.py"
+set "SCRIPT=%HERE%nana_image2.py"
 set "MODE="
 
 python3 -c "import sys;raise SystemExit(0 if sys.version_info>=(3,9) else 1)" >nul 2>&1

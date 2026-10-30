@@ -36,7 +36,7 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 import psd_io
 
-USER_AGENT = "codex-nanaiamge/1.0"
+USER_AGENT = "codex-nana_image2/1.0"
 DEFAULT_MODEL = "gpt-image-2.5-sunburst"
 IMAGE_25_MODELS = {"gpt-image-2.5-sunburst", "gpt-image-2.5-flare",
                    "gpt-image-2.5-sunburst-2026-09-08", "gpt-image-2.5-flare-2026-09-08"}
@@ -395,7 +395,7 @@ def save_response(result: dict[str, Any], paths: list[Path], requested_size: str
 
 
 def multipart(fields: dict[str, str], files: list[tuple[str, Path]]) -> tuple[bytes, str]:
-    boundary = "----nanaiamge-" + uuid.uuid4().hex
+    boundary = "----nana_image2-" + uuid.uuid4().hex
     body = bytearray()
     for name, value in fields.items():
         body.extend(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode())

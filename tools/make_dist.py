@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Build self-contained distribution zips for the nanaiamge skill.
+"""Build self-contained distribution zips for the nana_image2 skill.
 
     python3 tools/make_dist.py --win-runtime /path/cpython-...windows...install_only.zip \
                                --mac-runtime /path/cpython-...darwin...install_only.tar.gz \
                                [--output dist]
 
 Produces:
-    dist/nanaiamge-windows-x64.zip   (Windows, bundled runtime - no Python needed)
-    dist/nanaiamge-macos.zip         (macOS, bundled runtime - no Python needed)
+    dist/nana_image2-windows-x64.zip   (Windows, bundled runtime - no Python needed)
+    dist/nana_image2-macos.zip         (macOS, bundled runtime - no Python needed)
 
 Each zip contains SKILL.md, AGENTS.md, LICENSE, scripts/ (CLI + launchers),
 the per-platform quick installers, and a private portable CPython under
@@ -35,14 +35,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 COMMON_FILES = ["SKILL.md", "AGENTS.md", "LICENSE"]
-COMMON_SCRIPTS = ["nanaiamge.py", "psd_io.py", "run", "run.cmd"]
+COMMON_SCRIPTS = ["nana_image2.py", "psd_io.py", "run", "run.cmd"]
 
 WIN_LAYOUT = {
     "files": COMMON_FILES,
     "scripts": COMMON_SCRIPTS,
     "runtime": {"run.cmd", "python.exe", "pythonw.exe"},
     "installers": ["quick-install-windows.bat", "quick-uninstall-windows.bat"],
-    "name": "nanaiamge-windows-x64.zip",
+    "name": "nana_image2-windows-x64.zip",
     "exclude_scripts": set(),
 }
 
@@ -51,7 +51,7 @@ MAC_LAYOUT = {
     "scripts": COMMON_SCRIPTS,
     "runtime": {"run"},          # everything under runtime/ is kept
     "installers": ["quick-install-mac.command", "quick-uninstall-mac.command"],
-    "name": "nanaiamge-macos.zip",
+    "name": "nana_image2-macos.zip",
     "exclude_scripts": {"run.cmd"},
 }
 
@@ -85,8 +85,8 @@ def extract_runtime(archive: Path, target: Path) -> None:
 def build(layout: dict, runtime_archive: Path | None, output_dir: Path) -> Path:
     if not runtime_archive or not runtime_archive.is_file():
         fail(f"runtime archive not found: {runtime_archive}")
-    work = Path(tempfile.mkdtemp(prefix="nanaiamge-dist-"))
-    pkg = work / "nanaiamge"
+    work = Path(tempfile.mkdtemp(prefix="nana_image2-dist-"))
+    pkg = work / "nana_image2"
     pkg.mkdir()
     try:
         for name in layout["files"]:

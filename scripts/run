@@ -1,5 +1,5 @@
 #!/bin/sh
-# nanaiamge launcher - resolves a Python interpreter and runs the CLI.
+# nana_image2 launcher - resolves a Python interpreter and runs the CLI.
 #
 # Resolution order:
 #   1. a system python3 (3.9+)  -> developers keep using their own Python
@@ -11,7 +11,7 @@
 set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
-script="$here/nanaiamge.py"
+script="$here/nana_image2.py"
 
 py=""
 if command -v python3 >/dev/null 2>&1; then

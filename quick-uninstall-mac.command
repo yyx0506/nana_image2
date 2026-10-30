@@ -1,12 +1,12 @@
 #!/bin/bash
 # ===========================================================================
-#  nanaiamge - one-click rollback (macOS)
-#  Deletes ~/.codex/skills/nanaiamge. Nothing else is touched:
+#  nana_image2 - one-click rollback (macOS)
+#  Deletes ~/.codex/skills/nana_image2. Nothing else is touched:
 #  the skill only ever READS the Codex config, so there is nothing to undo.
 # ===========================================================================
 set -euo pipefail
 
-SKILL_NAME="nanaiamge"
+SKILL_NAME="nana_image2"
 DEST="$HOME/.codex/skills/$SKILL_NAME"
 
 if [ -d "$DEST" ]; then

@@ -1,5 +1,5 @@
 ---
-name: "nanaiamge"
+name: "nana_image2"
 description: "Generate or edit raster images through the current Codex custom provider or sub2api when the built-in image_gen tool is unavailable, missing, or blocked. Use for image assets and visual variants; do not use for SVG, HTML/CSS, diagrams, or other deterministic code-native visuals."
 ---
 

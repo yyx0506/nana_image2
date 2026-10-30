@@ -1,7 +1,7 @@
 @echo off
 rem =========================================================================
-rem  nanaiamge - one-click install for Codex (Windows)
-rem  Copies the skill into %USERPROFILE%\.codex\skills\nanaiamge and resolves
+rem  nana_image2 - one-click install for Codex (Windows)
+rem  Copies the skill into %USERPROFILE%\.codex\skills\nana_image2 and resolves
 rem  Python: 1) system python3 / py -3 (developers keep their own)
 rem           2) the bundled private runtime (nothing to install)
 rem  No config is modified; uninstall = quick-uninstall-windows.bat
@@ -9,7 +9,7 @@ rem =========================================================================
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
 
-set "SKILL_NAME=nanaiamge"
+set "SKILL_NAME=nana_image2"
 set "DEST=%USERPROFILE%\.codex\skills\%SKILL_NAME%"
 
 rem ---- resolve Python: system first, bundled runtime as fallback ----
@@ -39,7 +39,7 @@ if "!PYCMD!"=="" (
 )
 if "!PYCMD!"=="" (
     echo   [!!] No Python 3.9+ found and this package carries no bundled runtime.
-    echo        Re-download the full Windows package ^(nanaiamge-windows-x64.zip^)
+    echo        Re-download the full Windows package ^(nana_image2-windows-x64.zip^)
     echo        or install Python 3.9+ from https://python.org
     pause & exit /b 1
 )
@@ -49,7 +49,7 @@ if not defined USERUNTIME (
 
 rem ---- sanity ----
 if not exist SKILL.md goto broken
-if not exist scripts\nanaiamge.py goto broken
+if not exist scripts\nana_image2.py goto broken
 if not exist scripts\psd_io.py goto broken
 goto copyskill
 :broken
@@ -81,7 +81,7 @@ if exist "%~dp0runtime\python.exe" (
 echo.
 echo ============================================================
 echo  Done. Restart Codex, then try:
-echo    "用 nanaiamge 生成一张 1024x1024 的橙色猫海报"
+echo    "用 nana_image2 生成一张 1024x1024 的橙色猫海报"
 echo    "把 poster.psd 的背景层导出来，换成夕阳背景再合成 PSD"
 echo.
 echo  Rollback: double-click quick-uninstall-windows.bat

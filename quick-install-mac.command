@@ -1,7 +1,7 @@
 #!/bin/bash
 # ===========================================================================
-#  nanaiamge - one-click install for Codex (macOS, Apple Silicon/Intel)
-#  Copies the skill into ~/.codex/skills/nanaiamge and resolves Python:
+#  nana_image2 - one-click install for Codex (macOS, Apple Silicon/Intel)
+#  Copies the skill into ~/.codex/skills/nana_image2 and resolves Python:
 #    1. system python3 (3.9+)          -> developers keep their own Python
 #    2. the bundled private runtime     -> nothing to install for anyone else
 #  No config is modified; uninstall = double-click quick-uninstall-mac.command
@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SKILL_NAME="nanaiamge"
+SKILL_NAME="nana_image2"
 DEST="$HOME/.codex/skills/$SKILL_NAME"
 
 say() { printf '  %s\n' "$*"; }
@@ -33,10 +33,10 @@ if [ -z "$PY" ] && [ -x "runtime/bin/python3" ]; then
     fi
 fi
 [ -n "$PY" ] || die "no Python 3.9+ found and this package carries no bundled runtime.
-  Re-download the full macOS package (nanaiamge-macos.zip) or install Python 3.9+."
+  Re-download the full macOS package (nana_image2-macos.zip) or install Python 3.9+."
 
 # ---- sanity: the pieces we copy must exist here ----
-[ -f SKILL.md ] && [ -f scripts/nanaiamge.py ] && [ -f scripts/psd_io.py ] \
+[ -f SKILL.md ] && [ -f scripts/nana_image2.py ] && [ -f scripts/psd_io.py ] \
     || die "run this from the unpacked skill folder (SKILL.md must be next to it)."
 
 # ---- offline self-test before touching anything ----
@@ -45,7 +45,7 @@ if [ -d tests ]; then
         && ok "offline self-test passed" \
         || say "self-test failed - installing anyway; run tests manually to inspect"
 else
-    "$PY" -B scripts/nanaiamge.py --help >/dev/null 2>&1 \
+    "$PY" -B scripts/nana_image2.py --help >/dev/null 2>&1 \
         && ok "CLI smoke check passed" \
         || die "the CLI failed to run with the resolved interpreter."
 fi
@@ -67,7 +67,7 @@ cat <<EOF
 
 ============================================================
  Done. Restart Codex, then try:
-     "用 nanaiamge 生成一张 1024x1024 的橙色猫海报"
+     "用 nana_image2 生成一张 1024x1024 的橙色猫海报"
      "把 poster.psd 的背景层导出来，换成夕阳背景再合成 PSD"
 
  Rollback: double-click quick-uninstall-mac.command
