@@ -82,9 +82,10 @@ def extract_runtime(archive: Path, target: Path) -> None:
     extracted.rename(target)
 
 
-def build(layout: dict, runtime_archive: Path | None, output_dir: Path) -> Path:
-    if not runtime_archive or not runtime_archive.is_file():
-        fail(f"runtime archive not found: {runtime_archive}")
+def build(layout: dict, runtimes: dict, output_dir: Path) -> Path:
+    for target, archive in runtimes.items():
+        if not archive or not archive.is_file():
+            fail(f"runtime archive not found for {target}: {archive}")
     work = Path(tempfile.mkdtemp(prefix="nana_image2-dist-"))
     pkg = work / "nana_image2"
     pkg.mkdir()
@@ -113,8 +114,9 @@ def build(layout: dict, runtime_archive: Path | None, output_dir: Path) -> Path:
             if name.endswith(".command"):
                 (pkg / name).chmod(0o755)
         if layout["runtime"]:
-            print(f"  bundling runtime from {runtime_archive.name} ...")
-            extract_runtime(runtime_archive, pkg / "runtime")
+            for target, archive in runtimes.items():
+                print(f"  bundling {target}/ from {archive.name} ...")
+                extract_runtime(archive, pkg / target)
         output_dir.mkdir(parents=True, exist_ok=True)
         out = output_dir / layout["name"]
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
@@ -128,8 +130,9 @@ def build(layout: dict, runtime_archive: Path | None, output_dir: Path) -> Path:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--win-runtime", type=Path, help="python-build-standalone windows install_only.zip")
-    ap.add_argument("--mac-runtime", type=Path, help="python-build-standalone macos install_only.tar.gz")
+    ap.add_argument("--win-runtime", type=Path, help="python-build-standalone windows install_only(.zip/.tar.gz)")
+    ap.add_argument("--mac-runtime", type=Path, help="python-build-standalone macOS arm64 install_only.tar.gz (bundled as runtime/)")
+    ap.add_argument("--mac-runtime-x64", type=Path, help="python-build-standalone macOS x86_64 install_only.tar.gz (bundled as runtime-x64/ for Intel Macs)")
     ap.add_argument("--output", type=Path, default=ROOT / "dist")
     ap.add_argument("--print-urls", action="store_true",
                     help="show the python-build-standalone asset naming to download and exit")
@@ -144,9 +147,12 @@ def main() -> None:
 
     outputs = []
     if args.win_runtime:
-        outputs.append(build(WIN_LAYOUT, args.win_runtime, args.output))
+        outputs.append(build(WIN_LAYOUT, {"runtime": args.win_runtime}, args.output))
     if args.mac_runtime:
-        outputs.append(build(MAC_LAYOUT, args.mac_runtime, args.output))
+        mac = {"runtime": args.mac_runtime}
+        if args.mac_runtime_x64:
+            mac["runtime-x64"] = args.mac_runtime_x64
+        outputs.append(build(MAC_LAYOUT, mac, args.output))
     if not outputs:
         ap.error("nothing to build: pass --win-runtime and/or --mac-runtime")
     for out in outputs:

@@ -25,12 +25,17 @@ if command -v python3 >/dev/null 2>&1; then
         ok "using system Python $("$PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])') ($("$PY" -c 'import platform; print(platform.machine())'))"
     fi
 fi
-if [ -z "$PY" ] && [ -x "runtime/bin/python3" ]; then
-    if runtime/bin/python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
-        PY="$PWD/runtime/bin/python3"
-        ok "no usable system Python - using the bundled private runtime ($("$PY" --version 2>&1))"
-        say "(the runtime lives only inside the skill folder; nothing is installed system-wide)"
-    fi
+if [ -z "$PY" ]; then
+    # runtime/ is arm64 (Apple Silicon), runtime-x64/ is Intel; try the
+    # matching one first, then the other (exec fails cleanly on wrong arch).
+    for dir in runtime runtime-x64; do
+        if [ -x "$dir/bin/python3" ] && "$dir/bin/python3" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+            PY="$PWD/$dir/bin/python3"
+            ok "no usable system Python - using the bundled private runtime ($("$PY" --version 2>&1), $dir)"
+            say "(the runtime lives only inside the skill folder; nothing is installed system-wide)"
+            break
+        fi
+    done
 fi
 [ -n "$PY" ] || die "no Python 3.9+ found and this package carries no bundled runtime.
   Re-download the full macOS package (nana_image2-macos.zip) or install Python 3.9+."
@@ -56,9 +61,10 @@ mkdir -p "$DEST"
 cp SKILL.md AGENTS.md LICENSE "$DEST/"
 cp -R scripts "$DEST/scripts"
 rm -rf "$DEST/scripts/__pycache__"
-if [ -d runtime ]; then
-    cp -R runtime "$DEST/runtime"
-    ok "installed (with private runtime) to $DEST"
+if [ -d runtime ] || [ -d runtime-x64 ]; then
+    [ -d runtime ] && cp -R runtime "$DEST/runtime"
+    [ -d runtime-x64 ] && cp -R runtime-x64 "$DEST/runtime-x64"
+    ok "installed (with private runtimes) to $DEST"
 else
     ok "installed to $DEST"
 fi

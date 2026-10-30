@@ -20,11 +20,21 @@ if command -v python3 >/dev/null 2>&1; then
     fi
 fi
 if [ -z "$py" ]; then
-    for candidate in "$here/../runtime/bin/python3" "$here/../runtime/bin/python3.11" "$here/../runtime/bin/python3.13"; do
-        if [ -x "$candidate" ] && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
-            py="$candidate"
-            break
-        fi
+    # Bundled runtimes: runtime/ is arm64 (Apple Silicon), runtime-x64/ is Intel.
+    # Pick by CPU first, then try the other as a fallback.
+    arch="$(uname -m 2>/dev/null || echo unknown)"
+    if [ "$arch" = "x86_64" ]; then
+        dirs="$here/../runtime-x64 $here/../runtime"
+    else
+        dirs="$here/../runtime $here/../runtime-x64"
+    fi
+    for dir in $dirs; do
+        for candidate in "$dir/bin/python3" "$dir/bin/python3.11" "$dir/bin/python3.13"; do
+            if [ -x "$candidate" ] && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+                py="$candidate"
+                break 2
+            fi
+        done
     done
 fi
 if [ -z "$py" ]; then
