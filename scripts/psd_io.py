@@ -25,6 +25,11 @@ from __future__ import annotations
 import re
 import struct
 import zlib
+
+try:  # optional accelerator - everything works without it, just slower
+    import numpy as _np
+except Exception:  # noqa: BLE001
+    _np = None
 from pathlib import Path
 
 
@@ -221,6 +226,14 @@ class Layer:
                 raise PsdError(f"layer '{self.name}' channel {chan_id} has {len(plane)} bytes, expected {w * h}.")
             planes[chan_id] = plane
         if not all(cid in planes for cid in (0, 1, 2)):
+            return
+        if _np is not None:
+            arr = _np.empty((w * h, 4), dtype=_np.uint8)
+            arr[:, 0] = _np.frombuffer(planes[0], dtype=_np.uint8)
+            arr[:, 1] = _np.frombuffer(planes[1], dtype=_np.uint8)
+            arr[:, 2] = _np.frombuffer(planes[2], dtype=_np.uint8)
+            arr[:, 3] = _np.frombuffer(planes[-1], dtype=_np.uint8) if -1 in planes else 255
+            self._rgba = bytearray(arr.tobytes())
             return
         rgba = bytearray(w * h * 4)
         rgba[0::4] = planes[0]            # strided slice assignment: C speed
@@ -473,6 +486,35 @@ def _encode_channel(plane: bytes, width: int, height: int, compression: str) -> 
     raise PsdError(f"write_psd: unknown compression {compression!r} (raw/rle/zip/zip+prediction).")
 
 
+def _flatten_numpy(width: int, height: int, layers) -> bytearray:
+    """Vectorized source-over composite; results match the pure path within
+    one unit of rounding."""
+    out = _np.zeros((width * height, 4), dtype=_np.uint8)
+    for layer in layers:
+        if not layer.get("visible", True) or layer.get("rgba") is None:
+            continue
+        src = _np.frombuffer(layer["rgba"], dtype=_np.uint8).reshape(-1, 4)
+        opn = layer.get("opacity", 255) / 255.0
+        if opn <= 0:
+            continue
+        alpha = src[:, 3]
+        if int(alpha.min()) == 255 and opn == 1.0:
+            out[:] = src
+            continue
+        if int(alpha.max()) == 0:
+            continue
+        sa = alpha.astype(_np.float32) * (opn / 255.0)
+        da = out[:, 3].astype(_np.float32) / 255.0
+        oa = sa + da * (1.0 - sa)
+        nonzero = oa > 0
+        safe_oa = _np.where(nonzero, oa, 1.0)
+        blended = (src[:, :3].astype(_np.float32) * sa[:, None]
+                   + out[:, :3].astype(_np.float32) * (da * (1.0 - sa))[:, None]) / safe_oa[:, None]
+        out[:, :3] = _np.where(nonzero[:, None], _np.round(blended), out[:, :3])
+        out[:, 3] = _np.where(nonzero, _np.round(oa * 255), 0)
+    return bytearray(out.tobytes())
+
+
 def flatten(width: int, height: int, layers) -> bytearray:
     """Source-over composite, bottom layer first.
 
@@ -481,6 +523,8 @@ def flatten(width: int, height: int, layers) -> bytearray:
     an alpha min/max scan. Only genuinely semi-transparent pixels go
     through the per-pixel math.
     """
+    if _np is not None:
+        return _flatten_numpy(width, height, layers)
     size = width * height
     out = bytearray(size * 4)
     dst_opaque = False

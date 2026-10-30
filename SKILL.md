@@ -32,7 +32,8 @@ Streaming rules (important, both are workaround-driven):
 - An explicit Flare, Sunburst, full model ID, or dated snapshot requested by the user takes precedence over inferred intent. Map Flare to `gpt-image-2.5-flare` and Sunburst to `gpt-image-2.5-sunburst`; preserve explicitly requested full IDs/snapshots.
 - Without an explicit model, use Flare for speed, drafts, or everyday generation requests; use Sunburst for precise editing, preserving subject/text details, or when no preference is given. If both speed and detail are requested without a model, prefer Sunburst for preservation-critical edits.
 - Both models support generation and editing. Choose `generate` versus `edit` from whether the user wants a new image or an edit/reference workflow, not from the model name. Never send a reference image when the user requests text-only generation.
-- Pass the selected full ID via `--model` to both doctor and generate/edit. Merely mentioning a model in `--prompt` does not route the Python client. Report unavailable models; never silently switch variants or endpoints.
+- Pass the selected full ID via `--model` to both doctor and generate/edit. Merely mentioning a model in `--prompt` does not route the Python client.
+- Model availability fallback (never silent): a user-picked model that the provider does not list - or rejects with a model-not-found error - is retried ONCE with the default sibling (sunburst <-> flare, or `--fallback MODEL`), and the client prints a `{"fallback": {...}}` JSON note. When you see it, tell the user which model actually produced the image. `--no-fallback` restores strict fail-fast for both commands.
 
 Generate:
 

@@ -41,6 +41,9 @@ DEFAULT_MODEL = "gpt-image-2.5-sunburst"
 IMAGE_25_MODELS = {"gpt-image-2.5-sunburst", "gpt-image-2.5-flare",
                    "gpt-image-2.5-sunburst-2026-09-08", "gpt-image-2.5-flare-2026-09-08"}
 DEFAULT_SIZE = "3840x2160"
+# Models this client knows by name; anything else is a custom pick that gets
+# an availability pre-check and a loud fallback when the provider lacks it.
+KNOWN_IMAGE_MODELS = IMAGE_25_MODELS | {"gpt-image-1", "gpt-image-1.5", "gpt-image-2"}
 DEFAULT_OUT = "output/imagegen/output.png"
 MAX_INPUT_BYTES = 50 * 1024 * 1024
 
@@ -409,17 +412,54 @@ def multipart(fields: dict[str, str], files: list[tuple[str, Path]]) -> tuple[by
     return bytes(body), f"multipart/form-data; boundary={boundary}"
 
 
-def common_payload(args: argparse.Namespace) -> dict[str, Any]:
+def fallback_target(requested: str, override: str | None) -> str:
+    """The model to fall back to: explicit --fallback, else the default sibling."""
+    if override:
+        return override
+    return "gpt-image-2.5-flare" if requested == DEFAULT_MODEL else DEFAULT_MODEL
+
+
+def _model_unavailable(message: str) -> bool:
+    low = message.lower()
+    return any(marker in low for marker in (
+        "http 404", "model_not_found", "no such model", "does not exist",
+        "unknown model", "invalid model", "not a valid model"))
+
+
+def resolve_model(args: argparse.Namespace, base_url: str, headers: dict[str, str]) -> tuple[str, str | None]:
+    """Pick the model to request. Custom (non-catalog) models get a cheap
+    availability pre-check; when the provider does not list them, fall back
+    to the default sibling and say so loudly - never silently."""
+    requested = args.model
+    no_fallback = getattr(args, "no_fallback", False)
+    fallback = None if no_fallback else fallback_target(requested, getattr(args, "fallback", None))
+    if no_fallback or requested in KNOWN_IMAGE_MODELS:
+        return requested, fallback
+    try:
+        result = request_json(base_url + "/models", headers)
+        listed = {item.get("id") for item in result.get("data", []) if isinstance(item, dict)}
+    except SystemExit:
+        return requested, fallback          # pre-check failed; the real call will report
+    if requested in listed:
+        return requested, fallback
+    print(json.dumps({"fallback": {"requested": requested, "used": fallback,
+                                   "reason": "requested model is not in the provider model list"}},
+                     ensure_ascii=False))
+    return fallback, None
+
+
+def common_payload(args: argparse.Namespace, model: str | None = None) -> dict[str, Any]:
+    model = model or args.model
     if args.size is None:
-        args.size = DEFAULT_SIZE if args.model == "gpt-image-2" else "auto"
+        args.size = DEFAULT_SIZE if model == "gpt-image-2" else "auto"
     if not args.prompt.strip():
         fail("--prompt must not be blank.")
     if not 1 <= args.n <= 10:
         fail("--n must be between 1 and 10.")
-    if (args.model == "gpt-image-2" or args.model in IMAGE_25_MODELS) and args.size != "auto":
+    if (model == "gpt-image-2" or model in IMAGE_25_MODELS) and args.size != "auto":
         match = re.fullmatch(r"([1-9][0-9]*)x([1-9][0-9]*)", args.size)
         if not match:
-            fail(f"{args.model} --size must be auto or WIDTHxHEIGHT.")
+            fail(f"{model} --size must be auto or WIDTHxHEIGHT.")
         width, height = map(int, match.groups())
         long_edge, short_edge = max(width, height), min(width, height)
         if (
@@ -429,9 +469,9 @@ def common_payload(args: argparse.Namespace) -> dict[str, Any]:
             or long_edge / short_edge > 3
             or not 655_360 <= width * height <= 8_294_400
         ):
-            fail(f"{args.model} size exceeds its edge, alignment, ratio, or pixel-count limits.")
+            fail(f"{model} size exceeds its edge, alignment, ratio, or pixel-count limits.")
     return {key: value for key, value in {
-        "model": args.model,
+        "model": model,
         "prompt": args.prompt.strip(),
         "n": args.n,
         "size": args.size,
@@ -461,39 +501,53 @@ def doctor(args: argparse.Namespace) -> None:
 
 
 def generate(args: argparse.Namespace) -> None:
-    payload = common_payload(args)
-    paths = output_paths(args.out, args.n, args.output_format, args.force)
     base_url, headers, source = route(args)
-    use_stream = should_stream(args, payload)
-    if use_stream:
-        payload = dict(payload, stream=True)
-    if args.dry_run:
-        print(json.dumps({"route": source, "endpoint": base_url + "/images/generations",
-                          "stream": use_stream, "payload": payload,
-                          "outputs": [str(path) for path in paths]}, ensure_ascii=False, indent=2))
-        return
-    if use_stream:
-        events, fallback = request_events(base_url + "/images/generations", headers, payload)
-        if events is not None:
-            finals, partials = images_from_events(events)
-            if args.save_partials and partials:
-                for index, b64 in sorted(partials.items()):
-                    partial_path = paths[0].with_name(f"{paths[0].stem}-partial{index}.png")
-                    atomic_write(partial_path, base64.b64decode(b64))
-                    print(f"partial {index}: {partial_path.resolve()}")
-            if finals:
-                result: dict[str, Any] | None = {"data": finals}
-            elif partials:
-                print("Warning: stream ended without a final image; using the last partial image.", file=sys.stderr)
-                result = {"data": [{"b64_json": sorted(partials.items())[-1][1]}]}
+    model, model_fallback = resolve_model(args, base_url, headers)
+    paths = output_paths(args.out, args.n, args.output_format, args.force)
+    while True:
+        payload = common_payload(args, model=model)
+        use_stream = should_stream(args, payload)
+        if use_stream:
+            payload = dict(payload, stream=True)
+        if args.dry_run:
+            print(json.dumps({"route": source, "endpoint": base_url + "/images/generations",
+                              "stream": use_stream, "payload": payload,
+                              "model_fallback": model_fallback,
+                              "outputs": [str(path) for path in paths]}, ensure_ascii=False, indent=2))
+            return
+        try:
+            if use_stream:
+                events, json_doc = request_events(base_url + "/images/generations", headers, payload)
+                if events is not None:
+                    finals, partials = images_from_events(events)
+                    if args.save_partials and partials:
+                        for index, b64 in sorted(partials.items()):
+                            partial_path = paths[0].with_name(f"{paths[0].stem}-partial{index}.png")
+                            atomic_write(partial_path, base64.b64decode(b64))
+                            print(f"partial {index}: {partial_path.resolve()}")
+                    if finals:
+                        result: dict[str, Any] | None = {"data": finals}
+                    elif partials:
+                        print("Warning: stream ended without a final image; using the last partial image.", file=sys.stderr)
+                        result = {"data": [{"b64_json": sorted(partials.items())[-1][1]}]}
+                    else:
+                        fail("Stream completed but contained no image data.")
+                else:
+                    result = json_doc  # gateway ignored stream=True and answered JSON
             else:
-                fail("Stream completed but contained no image data.")
-        else:
-            result = fallback  # gateway ignored stream=True and answered JSON
-    else:
-        result = request_json(base_url + "/images/generations", headers,
-                              json.dumps(payload).encode(), "application/json")
-    save_response(result or {}, paths, args.size, args.model)
+                result = request_json(base_url + "/images/generations", headers,
+                                      json.dumps(payload).encode(), "application/json")
+        except SystemExit as exc:
+            # Loud one-shot fallback when the provider rejects the model itself.
+            if model_fallback and model_fallback != model and _model_unavailable(str(exc)):
+                print(json.dumps({"fallback": {"requested": model, "used": model_fallback,
+                                               "reason": f"provider rejected the model: {str(exc)[:140]}"}},
+                                 ensure_ascii=False))
+                model, model_fallback = model_fallback, None
+                continue
+            raise
+        save_response(result or {}, paths, args.size, model)
+        return
 
 
 def edit(args: argparse.Namespace) -> None:
@@ -506,16 +560,28 @@ def edit(args: argparse.Namespace) -> None:
             fail(f"Input file not found: {path}")
         if path.stat().st_size > MAX_INPUT_BYTES:
             fail(f"Input exceeds 50 MB: {path}")
-    payload = common_payload(args)
-    paths = output_paths(args.out, args.n, args.output_format, args.force)
     base_url, headers, source = route(args)
-    if args.dry_run:
-        print(json.dumps({"route": source, "endpoint": base_url + "/images/edits", "stream": False, "fields": payload, "image": str(image), "mask": str(mask) if mask else None, "outputs": [str(path) for path in paths]}, ensure_ascii=False, indent=2))
+    model, model_fallback = resolve_model(args, base_url, headers)
+    paths = output_paths(args.out, args.n, args.output_format, args.force)
+    while True:
+        payload = common_payload(args, model=model)
+        if args.dry_run:
+            print(json.dumps({"route": source, "endpoint": base_url + "/images/edits", "stream": False, "fields": payload, "model_fallback": model_fallback, "image": str(image), "mask": str(mask) if mask else None, "outputs": [str(path) for path in paths]}, ensure_ascii=False, indent=2))
+            return
+        fields = {key: str(value) for key, value in payload.items()}
+        body, content_type = multipart(fields, [("image", image)] + ([("mask", mask)] if mask else []))
+        try:
+            result = request_json(base_url + "/images/edits", headers, body, content_type)
+        except SystemExit as exc:
+            if model_fallback and model_fallback != model and _model_unavailable(str(exc)):
+                print(json.dumps({"fallback": {"requested": model, "used": model_fallback,
+                                               "reason": f"provider rejected the model: {str(exc)[:140]}"}},
+                                 ensure_ascii=False))
+                model, model_fallback = model_fallback, None
+                continue
+            raise
+        save_response(result, paths, args.size, model)
         return
-    fields = {key: str(value) for key, value in payload.items()}
-    body, content_type = multipart(fields, [("image", image)] + ([("mask", mask)] if mask else []))
-    result = request_json(base_url + "/images/edits", headers, body, content_type)
-    save_response(result, paths, args.size, args.model)
 
 
 # --------------------------------------------------------------------------
@@ -640,6 +706,13 @@ def parser() -> argparse.ArgumentParser:
     # 4K/high-quality jobs do not hit proxy origin timeouts (Cloudflare 524).
     # The edits path must never stream (sub2api #8027 -> 502 + pool drain),
     # so edit intentionally gets no --stream flag at all.
+    for name in ("generate", "edit"):
+        command = commands.choices[name]
+        command.add_argument("--fallback", metavar="MODEL", default=None,
+                             help="Model to fall back to when the requested one is unavailable "
+                                  "(default: the other 2.5 sibling).")
+        command.add_argument("--no-fallback", action="store_true",
+                             help="Fail strictly when the requested model is unavailable; never switch.")
     gen = commands.choices["generate"]
     gen.add_argument("--stream", choices=("auto", "on", "off"), default="auto",
                      help="auto: stream only slow jobs (quality high+ or >=2MP); on/off force it. Generations only.")
